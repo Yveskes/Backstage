@@ -1,0 +1,239 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { mockNotifications, type AppNotification } from "@/lib/notifications";
+import { canAccessPath, canManageStaff } from "@/lib/permissions";
+import { useUsers } from "@/components/users-provider";
+import { needsTshirt } from "@/lib/tshirts";
+import { formatStaffTasks, isStaffTaskId, usersForTasks, type StaffTaskId } from "@/lib/staff-tasks";
+
+const READ_KEY = "backstage.readNotificationIds";
+const TASK_MESSAGES_KEY = "backstage.taskMessages";
+
+export type TaskBroadcast = {
+  id: string;
+  taskIds: StaffTaskId[];
+  title: string;
+  body: string;
+  fromName: string;
+  fromUserId: string;
+  recipientIds: string[];
+  time: string;
+};
+
+function normalizeBroadcast(raw: Partial<TaskBroadcast> & { taskId?: StaffTaskId }): TaskBroadcast | null {
+  const taskIds = Array.isArray(raw.taskIds)
+    ? raw.taskIds.filter(isStaffTaskId)
+    : raw.taskId && isStaffTaskId(raw.taskId)
+      ? [raw.taskId]
+      : [];
+
+  if (!raw.id || taskIds.length === 0 || !Array.isArray(raw.recipientIds)) {
+    return null;
+  }
+
+  return {
+    id: raw.id,
+    taskIds,
+    title: raw.title ?? "",
+    body: raw.body ?? "",
+    fromName: raw.fromName ?? "",
+    fromUserId: raw.fromUserId ?? "",
+    recipientIds: raw.recipientIds,
+    time: raw.time ?? "",
+  };
+}
+
+type NotificationsContextValue = {
+  notifications: AppNotification[];
+  unreadCount: number;
+  taskBroadcasts: TaskBroadcast[];
+  markRead: (id: string) => void;
+  markAllRead: () => void;
+  sendTaskBroadcast: (input: { taskIds: StaffTaskId[]; title: string; body: string }) => number;
+};
+
+const NotificationsContext = createContext<NotificationsContextValue | null>(null);
+
+export function NotificationsProvider({ children }: { children: ReactNode }) {
+  const { currentUser, users, tshirtNotices } = useUsers();
+  const [readIds, setReadIds] = useState<string[]>([]);
+  const [taskBroadcasts, setTaskBroadcasts] = useState<TaskBroadcast[]>([]);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(READ_KEY);
+      setReadIds(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch {
+      setReadIds([]);
+    }
+
+    try {
+      const rawMessages = window.localStorage.getItem(TASK_MESSAGES_KEY);
+      setTaskBroadcasts(
+        rawMessages
+          ? (JSON.parse(rawMessages) as Array<Partial<TaskBroadcast> & { taskId?: StaffTaskId }>)
+              .map(normalizeBroadcast)
+              .filter((item): item is TaskBroadcast => item !== null)
+          : [],
+      );
+    } catch {
+      setTaskBroadcasts([]);
+    }
+
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+
+    window.localStorage.setItem(READ_KEY, JSON.stringify(readIds));
+    window.localStorage.setItem(TASK_MESSAGES_KEY, JSON.stringify(taskBroadcasts));
+  }, [readIds, ready, taskBroadcasts]);
+
+  const markRead = useCallback((id: string) => {
+    setReadIds((current) => (current.includes(id) ? current : [...current, id]));
+  }, []);
+
+  const sendTaskBroadcast = useCallback(
+    (input: { taskIds: StaffTaskId[]; title: string; body: string }) => {
+      const actor = currentUser;
+      if (!canManageStaff(actor)) {
+        return 0;
+      }
+
+      const taskIds = input.taskIds.filter(isStaffTaskId);
+      const recipients = usersForTasks(users, taskIds);
+      if (taskIds.length === 0 || recipients.length === 0) {
+        return 0;
+      }
+
+      const taskLabel = formatStaffTasks(taskIds);
+      const broadcast: TaskBroadcast = {
+        id: `task-${taskIds.join("-")}-${Date.now()}`,
+        taskIds,
+        title: input.title.trim() || `Bericht voor ${taskLabel}`,
+        body: input.body.trim(),
+        fromName: currentUser.fullName,
+        fromUserId: currentUser.id,
+        recipientIds: recipients.map((user) => user.id),
+        time: "Zojuist",
+      };
+
+      setTaskBroadcasts((current) => [broadcast, ...current].slice(0, 50));
+      return recipients.length;
+    },
+    [currentUser, users],
+  );
+
+  const value = useMemo<NotificationsContextValue>(() => {
+    const pending = users.filter((user) => needsTshirt(user.kind) && !user.tshirtConfirmed);
+    const extra: AppNotification[] = [];
+
+    if (canManageStaff(currentUser) && pending.length > 0) {
+      extra.push({
+        id: `tshirt-pending-${pending.length}`,
+        title: "T-shirt nog niet bevestigd",
+        body: `${pending.length} medewerker${pending.length === 1 ? " heeft" : "s hebben"} de t-shirtmaat nog niet gekozen of bevestigd.`,
+        time: "Openstaand",
+        unread: true,
+        href: "/medewerkers/tshirts",
+        kind: "tshirt",
+        audience: ["admin", "team"],
+      });
+    }
+
+    if (canManageStaff(currentUser)) {
+      for (const notice of tshirtNotices) {
+        extra.push({
+          id: notice.id,
+          title: `${notice.fullName} bevestigde t-shirtmaat`,
+          body: `${notice.fullName} koos maat ${notice.size}.`,
+          time: notice.time,
+          unread: !readIds.includes(notice.id),
+          href: "/medewerkers/tshirts",
+          kind: "tshirt",
+          audience: ["admin", "team"],
+        });
+      }
+    }
+
+    const taskNotifications: AppNotification[] = taskBroadcasts
+      .filter(
+        (item) =>
+          item.recipientIds.includes(currentUser.id) || item.fromUserId === currentUser.id,
+      )
+      .map((item) => {
+        const taskLabel = formatStaffTasks(item.taskIds);
+        const isRecipient = item.recipientIds.includes(currentUser.id);
+
+        return {
+          id: item.id,
+          title: item.title,
+          body: `${item.body}\n\n${taskLabel} · van ${item.fromName}`,
+          time: item.time,
+          unread: isRecipient && !readIds.includes(item.id),
+          kind: "task" as const,
+          recipientIds: item.recipientIds,
+          fromUserId: item.fromUserId,
+          taskIds: item.taskIds,
+        };
+      });
+
+    const notifications = [
+      ...taskNotifications,
+      ...extra,
+      ...mockNotifications.map((item) => ({
+        ...item,
+        unread: item.unread && !readIds.includes(item.id),
+      })),
+    ].filter((item) => {
+      if (item.kind === "tshirt" && !canManageStaff(currentUser)) {
+        return false;
+      }
+
+      if (item.recipientIds && item.fromUserId !== currentUser.id && !item.recipientIds.includes(currentUser.id)) {
+        return false;
+      }
+
+      if (item.audience && !item.audience.includes(currentUser.kind)) {
+        return false;
+      }
+
+      return !item.href || item.href.startsWith("#") || canAccessPath(currentUser, item.href);
+    });
+
+    return {
+      notifications,
+      unreadCount: notifications.filter((item) => item.unread).length,
+      taskBroadcasts,
+      markRead,
+      markAllRead() {
+        setReadIds(notifications.map((item) => item.id));
+      },
+      sendTaskBroadcast,
+    };
+  }, [currentUser, markRead, readIds, sendTaskBroadcast, taskBroadcasts, tshirtNotices, users]);
+
+  return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;
+}
+
+export function useNotifications() {
+  const context = useContext(NotificationsContext);
+  if (!context) {
+    throw new Error("useNotifications must be used within NotificationsProvider");
+  }
+
+  return context;
+}

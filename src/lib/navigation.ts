@@ -2,96 +2,89 @@ export type NavItem = {
   href: string;
   label: string;
   description: string;
+  module?: import("@/lib/permissions").ModuleId;
+  children?: NavItem[];
 };
 
-export type NavSection = {
-  title: string;
-  items: NavItem[];
-};
-
-export const navigation: NavSection[] = [
+export const navigation: NavItem[] = [
   {
-    title: "Overzicht",
-    items: [
+    href: "/",
+    label: "Mijn pagina",
+    description: "Meldingen en overzicht.",
+  },
+  {
+    href: "/medewerkers",
+    label: "Medewerkers",
+    description: "Team, logins en rechten per persoon.",
+    module: "medewerkers",
+  },
+  {
+    href: "/social-media",
+    label: "Social Media",
+    description: "Kalender, posts en ideeën.",
+    module: "social-media",
+    children: [
       {
-        href: "/",
-        label: "Dashboard",
-        description: "Status, taken en snelle toegang tot de app.",
+        href: "/social-media/kalender",
+        label: "Kalender",
+        description: "Planning van social posts.",
+        module: "social-media",
+      },
+      {
+        href: "/social-media/posts",
+        label: "Posts",
+        description: "Foto's en video's uploaden.",
+        module: "social-media",
+      },
+      {
+        href: "/social-media/ideeen",
+        label: "Ideeën",
+        description: "Contentideeën met screenshot of video.",
+        module: "social-media",
       },
     ],
   },
   {
-    title: "Inhoud",
-    items: [
-      {
-        href: "/documenten",
-        label: "Documenten",
-        description: "Centrale mappen met versies per festivaljaar.",
-      },
-      {
-        href: "/downloads",
-        label: "Downloads",
-        description: "Brandbook, logo's en andere vaste assets.",
-      },
-    ],
+    href: "/documenten",
+    label: "Documenten",
+    description: "Centrale mappen met versies per festivaljaar.",
+    module: "documenten",
   },
   {
-    title: "Mensen",
-    items: [
-      {
-        href: "/medewerkers",
-        label: "Medewerkers",
-        description: "Team, logins en rechten per persoon.",
-      },
-    ],
+    href: "/media",
+    label: "Media",
+    description: "Logo's, brandbook, foto's en downloadbare assets.",
+    module: "media",
   },
   {
-    title: "Commercieel",
-    items: [
-      {
-        href: "/sponsors",
-        label: "Sponsors",
-        description: "Sponsors, pakketten en opvolging.",
-      },
-      {
-        href: "/facturen",
-        label: "Facturen",
-        description: "Facturen naar sponsors versturen en opvolgen.",
-      },
-      {
-        href: "/social",
-        label: "Social media",
-        description: "Kalender, planning en promo-posts.",
-      },
-    ],
-  },
-  {
-    title: "Uitgifte",
-    items: [
-      {
-        href: "/vrijkaarten",
-        label: "Vrijkaarten",
-        description: "Gastlijst en vrijkaarten beheren.",
-      },
-      {
-        href: "/drankbonnen",
-        label: "Drankbonnen",
-        description: "Drankbonnen uitgeven en opvolgen.",
-      },
-    ],
-  },
-  {
-    title: "Systeem",
-    items: [
-      {
-        href: "/instellingen",
-        label: "Instellingen",
-        description: "Festivaljaar, rollen en algemene instellingen.",
-      },
-    ],
+    href: "/sponsoring",
+    label: "Sponsoring",
+    description: "Overzicht van sponsors per festivaljaar.",
+    module: "sponsoring",
   },
 ];
 
-export function findNavItem(pathname: string): NavItem | undefined {
-  return navigation.flatMap((section) => section.items).find((item) => item.href === pathname);
+export const staffNavigation: NavItem[] = [
+  {
+    href: "/mijn",
+    label: "Mijn pagina",
+    description: "Meldingen en jouw overzicht.",
+  },
+];
+
+export const sponsorSubPages = ["facturen", "drankbonnen", "vrijkaarten"] as const;
+export type SponsorSubPage = (typeof sponsorSubPages)[number];
+
+export function getSponsorIdFromPath(pathname: string): string | null {
+  const match = pathname.match(/^\/sponsoring\/([^/]+)/);
+  if (!match) {
+    return null;
+  }
+
+  const segment = match[1];
+  if ((sponsorSubPages as readonly string[]).includes(segment)) {
+    return null;
+  }
+
+  return segment;
 }

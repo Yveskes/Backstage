@@ -1,4 +1,4 @@
-import { createServerClient } from "./server";
+import { createAnonClient } from "./anon";
 
 export type ConnectionTestResult = {
   status: "ok" | "config_error" | "key_error" | "migration_pending" | "rls_blocked" | "error";
@@ -18,7 +18,7 @@ export async function testSupabaseConnection(): Promise<ConnectionTestResult> {
   }
 
   try {
-    const supabase = createServerClient();
+    const supabase = createAnonClient();
     const { data, error } = await supabase
       .from("festivals")
       .select("id, name, year")
