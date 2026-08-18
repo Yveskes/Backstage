@@ -37,7 +37,7 @@ export function HomeFeed({
     <>
       <PageHeader
         title={`Hallo ${firstNameOf(currentUser)}`}
-        description="Meldingen komen hier binnen. Chat staat rechts."
+        description="Hier vind je alles: meldingen, reacties en wat er voor jou klaarstaat."
       />
 
       <TshirtPicker />

@@ -14,14 +14,15 @@ import {
 
 export default function NotificationDetailPage() {
   const params = useParams<{ id: string }>();
-  const { notifications, markRead } = useNotifications();
+  const { notifications, markRead, markThreadRepliesRead } = useNotifications();
   const item = notifications.find((entry) => entry.id === params.id);
 
   useEffect(() => {
     if (item) {
       markRead(item.id);
+      markThreadRepliesRead(item.id);
     }
-  }, [item, markRead]);
+  }, [item, markRead, markThreadRepliesRead]);
 
   if (!item) {
     return (

@@ -1,7 +1,7 @@
 "use client";
 
 import { LogoutButton } from "@/components/logout-button";
-import { NotificationsButton } from "@/components/notifications-button";
+import { HeaderActions } from "@/components/header-actions";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -33,7 +33,7 @@ export function AppSidebar() {
           Backstage
         </Link>
         <div className="flex items-center gap-2">
-          <NotificationsButton variant="dark" />
+          <HeaderActions variant="dark" />
           <button
             type="button"
             onClick={() => setOpen((value) => !value)}

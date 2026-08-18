@@ -147,7 +147,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     setReadIds((current) => (current.includes(id) ? current : [...current, id]));
   }, []);
 
-  const markRepliesRead = useCallback((ids?: string[]) => {
+  const addSeenReplyIds = useCallback((ids?: string[]) => {
     if (!ids || ids.length === 0) {
       return;
     }
@@ -365,18 +365,18 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       notifications,
       unreadCount: notifications.filter((item) => item.unread).length,
       replies,
-      unreadReplyCount: replies.filter((item) => item.unread).length,
+      unreadReplyCount: replies.filter((item) => !seenReplyIds.includes(item.id)).length,
       taskBroadcasts,
       markRead,
       markAllRead() {
         setReadIds(notifications.map((item) => item.id));
       },
       markRepliesRead(ids) {
-        markRepliesRead(ids ?? replies.map((item) => item.id));
+        addSeenReplyIds(ids ?? replies.map((item) => item.id));
       },
       markThreadRepliesRead(notificationId) {
         const comments = (threads[notificationId] ?? emptyThread()).comments;
-        markRepliesRead(comments.map((comment) => replyId(notificationId, comment.id)));
+        addSeenReplyIds(comments.map((comment) => replyId(notificationId, comment.id)));
       },
       sendTaskBroadcast,
       threadFor,
@@ -386,9 +386,9 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     };
   }, [
     addComment,
+    addSeenReplyIds,
     currentUser,
     markRead,
-    markRepliesRead,
     readIds,
     seenReplyIds,
     sendTaskBroadcast,

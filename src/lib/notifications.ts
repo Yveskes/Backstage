@@ -53,6 +53,7 @@ export type NotificationReply = {
   userName: string;
   body: string;
   time: string;
+  unread: boolean;
 };
 
 export function imageAttachments(item: AppNotification) {
