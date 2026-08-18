@@ -42,7 +42,7 @@ function CopyInviteLink({ url }: { url: string }) {
 }
 
 export function AddStaffForm() {
-  const { addUser, currentUser } = useUsers();
+  const { addUser, currentUser, refreshDirectory } = useUsers();
   const [state, action, pending] = useActionState(createInvite, null as AuthState | null);
   const lastRef = useRef<InviteDraft>({ firstName: "", lastName: "", email: "", kind: "staff" });
   const canAdd = canManageStaff(currentUser);
@@ -54,9 +54,10 @@ export function AddStaffForm() {
       return;
     }
 
-    addUser(createNewUser(lastRef.current));
+    addUser({ ...createNewUser(lastRef.current), invitePending: true });
     lastRef.current = { firstName: "", lastName: "", email: "", kind: "staff" };
-  }, [addUser, state?.success]);
+    void refreshDirectory();
+  }, [addUser, refreshDirectory, state?.success]);
 
   if (!canAdd) {
     return null;

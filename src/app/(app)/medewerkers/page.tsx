@@ -15,7 +15,7 @@ import {
 } from "@/lib/staff-tasks";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 function isBestuur(user: AppUser) {
   return user.kind !== "staff";
@@ -24,9 +24,13 @@ function isBestuur(user: AppUser) {
 type ListFilter = "all" | "bestuur" | StaffTaskId;
 
 export default function MedewerkersPage() {
-  const { users, currentUser, sessionUser, removeUser } = useUsers();
+  const { users, currentUser, sessionUser, removeUser, refreshDirectory } = useUsers();
   const canManage = canManageStaff(currentUser);
   const [filter, setFilter] = useState<ListFilter>("all");
+
+  useEffect(() => {
+    void refreshDirectory();
+  }, [refreshDirectory]);
 
   if (!canManage) {
     return (
@@ -163,6 +167,9 @@ function UserList({
                       {leadIds.length > 0 ? " *" : ""}
                     </Link>
                     <p className="text-xs text-zinc-500">{user.email}</p>
+                    {user.invitePending ? (
+                      <p className="mt-1 text-xs text-amber-700">Uitnodiging nog open</p>
+                    ) : null}
                     {leadIds.length > 0 ? (
                       <p className="mt-1 text-xs text-zinc-700">
                         * Verantwoordelijke {formatStaffTasks(leadIds)}

@@ -1,6 +1,6 @@
 "use client";
 
-import { loadProfileModules, type ProfileModules } from "@/app/(app)/medewerkers/actions";
+import { loadDirectoryPeople, type DirectoryPerson } from "@/app/(app)/medewerkers/actions";
 import { isAdminEmail } from "@/lib/admins";
 import { defaultUsers } from "@/lib/users";
 import { createNewUser, defaultTshirtSize, joinName, sanitizeDays, sanitizeModules, sanitizeTasks, splitName, type AppUser } from "@/lib/permissions";
@@ -9,6 +9,7 @@ import { needsTshirt, sanitizeTshirtSize, type TshirtSize } from "@/lib/tshirts"
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -39,6 +40,7 @@ type UsersContextValue = {
   stopViewingAs: () => void;
   updateUser: (id: string, patch: Partial<AppUser>) => void;
   addUser: (user: AppUser) => void;
+  refreshDirectory: () => Promise<void>;
   removeUser: (id: string) => boolean;
   confirmTshirt: (id: string, size: TshirtSize) => void;
 };
@@ -70,6 +72,7 @@ function normalizeUser(user: Partial<AppUser> & { fullName?: string; email?: str
     tshirtSize: defaultTshirtSize(user.tshirtSizeLastYear, user.tshirtSize),
     tshirtConfirmed: Boolean(user.tshirtConfirmed),
     active: user.active ?? true,
+    invitePending: Boolean(user.invitePending),
   };
 }
 
@@ -105,16 +108,43 @@ function readUsers(): AppUser[] {
   }
 }
 
-function mergeProfileModules(users: AppUser[], rows: ProfileModules[]): AppUser[] {
-  if (rows.length === 0) {
+function mergeDirectory(users: AppUser[], people: DirectoryPerson[]): AppUser[] {
+  if (people.length === 0) {
     return users;
   }
 
-  const byEmail = new Map(rows.map((row) => [row.email, row.modules]));
-  return users.map((user) => {
-    const modules = byEmail.get(user.email.toLowerCase());
-    return modules === undefined ? user : { ...user, modules };
-  });
+  const localByEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]));
+  const seen = new Set<string>();
+  const merged: AppUser[] = [];
+
+  for (const person of people) {
+    const email = person.email.toLowerCase();
+    seen.add(email);
+    const existing = localByEmail.get(email);
+
+    merged.push(
+      normalizeUser({
+        ...(existing ?? {}),
+        id: person.id,
+        firstName: person.firstName || existing?.firstName,
+        lastName: person.lastName || existing?.lastName,
+        fullName: person.fullName || existing?.fullName,
+        email,
+        kind: person.kind,
+        modules: person.modules.length > 0 ? person.modules : existing?.modules,
+        invitePending: person.invitePending,
+        active: existing?.active ?? true,
+      }),
+    );
+  }
+
+  for (const user of users) {
+    if (!seen.has(user.email.toLowerCase())) {
+      merged.push(user);
+    }
+  }
+
+  return merged;
 }
 
 function applyLoggedInEmail(
@@ -219,7 +249,13 @@ export function UsersProvider({ children }: { children: ReactNode }) {
           }
 
           try {
-            nextUsers = mergeProfileModules(nextUsers, await loadProfileModules());
+            nextUsers = mergeDirectory(nextUsers, await loadDirectoryPeople());
+            if (email) {
+              const session = nextUsers.find((user) => user.email.toLowerCase() === email);
+              if (session) {
+                setSessionUserId(session.id);
+              }
+            }
           } catch {
             // Keep local users if the database is not ready yet.
           }
@@ -248,6 +284,15 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       window.localStorage.removeItem(VIEW_AS_KEY);
     }
   }, [users, viewAsUserId, tshirtNotices, ready]);
+
+  const refreshDirectory = useCallback(async () => {
+    try {
+      const people = await loadDirectoryPeople();
+      setUsers((current) => mergeDirectory(current, people));
+    } catch {
+      // Keep the current list if the database is unreachable.
+    }
+  }, []);
 
   const value = useMemo<UsersContextValue>(() => {
     const sessionUser = users.find((user) => user.id === sessionUserId) ?? users[0];
@@ -331,22 +376,30 @@ export function UsersProvider({ children }: { children: ReactNode }) {
         });
       },
       addUser(user) {
-        setUsers((current) => [
-          ...current,
-          {
-            ...user,
-            kind: isAdminEmail(user.email) ? "admin" : user.kind === "team" ? "team" : "staff",
-            modules: user.kind === "team" ? sanitizeModules(user.modules) : [],
-            tasks: sanitizeTasks(user.tasks),
-            days: sanitizeDays(user.days),
-            opbouwDays: sanitizeOpbouwDays(user.opbouwDays),
-            afbouwDays: sanitizeAfbouwDays(user.afbouwDays),
-            tshirtSizeLastYear: sanitizeTshirtSize(user.tshirtSizeLastYear),
-            tshirtSize: defaultTshirtSize(user.tshirtSizeLastYear, user.tshirtSize),
-            tshirtConfirmed: false,
-          },
-        ]);
+        setUsers((current) => {
+          if (current.some((entry) => entry.email.toLowerCase() === user.email.toLowerCase())) {
+            return current;
+          }
+
+          return [
+            ...current,
+            {
+              ...user,
+              kind: isAdminEmail(user.email) ? "admin" : user.kind === "team" ? "team" : "staff",
+              modules: user.kind === "team" ? sanitizeModules(user.modules) : [],
+              tasks: sanitizeTasks(user.tasks),
+              days: sanitizeDays(user.days),
+              opbouwDays: sanitizeOpbouwDays(user.opbouwDays),
+              afbouwDays: sanitizeAfbouwDays(user.afbouwDays),
+              tshirtSizeLastYear: sanitizeTshirtSize(user.tshirtSizeLastYear),
+              tshirtSize: defaultTshirtSize(user.tshirtSizeLastYear, user.tshirtSize),
+              tshirtConfirmed: false,
+              invitePending: user.invitePending ?? true,
+            },
+          ];
+        });
       },
+      refreshDirectory,
       removeUser(id) {
         const actor = users.find((user) => user.id === sessionUserId);
         const target = users.find((user) => user.id === id);
@@ -402,7 +455,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
         }
       },
     };
-  }, [users, sessionUserId, viewAsUserId, tshirtNotices]);
+  }, [users, sessionUserId, viewAsUserId, tshirtNotices, refreshDirectory]);
 
   return <UsersContext.Provider value={value}>{children}</UsersContext.Provider>;
 }

@@ -72,6 +72,7 @@ export type AppUser = {
   tshirtSize: TshirtSize | null;
   tshirtConfirmed: boolean;
   active: boolean;
+  invitePending?: boolean;
 };
 
 export const kindLabel: Record<UserKind, string> = {
