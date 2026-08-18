@@ -3,14 +3,16 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ChatPanel } from "@/components/chat-panel";
 import { NotificationsButton } from "@/components/notifications-button";
 import { NotificationsProvider } from "@/components/notifications-provider";
+import { StaffPlanningProvider } from "@/components/staff-planning-provider";
 import { UsersProvider } from "@/components/users-provider";
 import { ViewAsBanner } from "@/components/view-as-banner";
 
 export default function AppLayout({ children }: LayoutProps<"/">) {
   return (
     <UsersProvider>
-      <NotificationsProvider>
-        <div className="min-h-dvh bg-zinc-100">
+      <StaffPlanningProvider>
+        <NotificationsProvider>
+          <div className="min-h-dvh bg-zinc-100">
           <ViewAsBanner />
           <div className="lg:flex">
             <AppSidebar />
@@ -31,7 +33,8 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
             </aside>
           </div>
         </div>
-      </NotificationsProvider>
+        </NotificationsProvider>
+      </StaffPlanningProvider>
     </UsersProvider>
   );
 }

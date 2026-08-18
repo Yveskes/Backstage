@@ -9,7 +9,7 @@ export type NavItem = {
 export const navigation: NavItem[] = [
   {
     href: "/",
-    label: "Mijn pagina",
+    label: "Overzicht",
     description: "Meldingen en overzicht.",
   },
   {
@@ -17,6 +17,26 @@ export const navigation: NavItem[] = [
     label: "Medewerkers",
     description: "Team, logins en rechten per persoon.",
     module: "medewerkers",
+    children: [
+      {
+        href: "/medewerkers/planning",
+        label: "Planning",
+        description: "Wie werkt wanneer en hoeveel mensen per post.",
+        module: "medewerkers",
+      },
+      {
+        href: "/medewerkers/berichten",
+        label: "Bericht per taak",
+        description: "Stuur een melding naar een post.",
+        module: "medewerkers",
+      },
+      {
+        href: "/medewerkers/tshirts",
+        label: "T-shirtlijst",
+        description: "Bevestigde maten en bestelling.",
+        module: "medewerkers",
+      },
+    ],
   },
   {
     href: "/social-media",
@@ -67,7 +87,7 @@ export const navigation: NavItem[] = [
 export const staffNavigation: NavItem[] = [
   {
     href: "/mijn",
-    label: "Mijn pagina",
+    label: "Overzicht",
     description: "Meldingen en jouw overzicht.",
   },
 ];

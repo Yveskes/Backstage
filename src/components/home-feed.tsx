@@ -7,7 +7,7 @@ import { TshirtPicker } from "@/components/tshirt-picker";
 import { useNotifications } from "@/components/notifications-provider";
 import { useUsers } from "@/components/users-provider";
 import { firstNameOf } from "@/lib/permissions";
-import { formatStaffDays, formatStaffTasks } from "@/lib/staff-tasks";
+import { formatStaffTasks, formatUserSchedule } from "@/lib/staff-tasks";
 import type { ConnectionTestResult } from "@/lib/supabase/test-connection";
 
 const statusStyles: Record<string, string> = {
@@ -30,7 +30,7 @@ export function HomeFeed({
   const { notifications } = useNotifications();
   const shiftLabel =
     currentUser.tasks.length > 0
-      ? `${formatStaffTasks(currentUser.tasks)} · ${formatStaffDays(currentUser.days)}`
+      ? `${formatStaffTasks(currentUser.tasks)} · ${formatUserSchedule(currentUser)}`
       : null;
 
   return (

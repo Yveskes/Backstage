@@ -3,6 +3,7 @@
 import { isAdminEmail } from "@/lib/admins";
 import { defaultUsers } from "@/lib/users";
 import { createNewUser, defaultTshirtSize, joinName, sanitizeDays, sanitizeModules, sanitizeTasks, splitName, type AppUser } from "@/lib/permissions";
+import { sanitizeAfbouwDays, sanitizeOpbouwDays } from "@/lib/staff-tasks";
 import { needsTshirt, sanitizeTshirtSize, type TshirtSize } from "@/lib/tshirts";
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
@@ -62,11 +63,23 @@ function normalizeUser(user: Partial<AppUser> & { fullName?: string; email?: str
     modules: sanitizeModules(user.modules),
     tasks: sanitizeTasks(user.tasks),
     days: sanitizeDays(user.days),
+    opbouwDays: sanitizeOpbouwDays(user.opbouwDays),
+    afbouwDays: sanitizeAfbouwDays(user.afbouwDays),
     tshirtSizeLastYear: sanitizeTshirtSize(user.tshirtSizeLastYear),
     tshirtSize: defaultTshirtSize(user.tshirtSizeLastYear, user.tshirtSize),
     tshirtConfirmed: Boolean(user.tshirtConfirmed),
     active: user.active ?? true,
   };
+}
+
+function mergeMissingDefaults(stored: AppUser[]): AppUser[] {
+  const emails = new Set(stored.map((user) => user.email.toLowerCase()));
+  const ids = new Set(stored.map((user) => user.id));
+  const extra = defaultUsers
+    .filter((user) => !ids.has(user.id) && !emails.has(user.email.toLowerCase()))
+    .map(normalizeUser);
+
+  return extra.length === 0 ? stored : [...stored, ...extra];
 }
 
 function readUsers(): AppUser[] {
@@ -85,7 +98,7 @@ function readUsers(): AppUser[] {
       return defaultUsers.map(normalizeUser);
     }
 
-    return parsed.map(normalizeUser);
+    return mergeMissingDefaults(parsed.map(normalizeUser));
   } catch {
     return defaultUsers.map(normalizeUser);
   }
@@ -307,6 +320,8 @@ export function UsersProvider({ children }: { children: ReactNode }) {
             modules: user.kind === "team" ? sanitizeModules(user.modules) : [],
             tasks: sanitizeTasks(user.tasks),
             days: sanitizeDays(user.days),
+            opbouwDays: sanitizeOpbouwDays(user.opbouwDays),
+            afbouwDays: sanitizeAfbouwDays(user.afbouwDays),
             tshirtSizeLastYear: sanitizeTshirtSize(user.tshirtSizeLastYear),
             tshirtSize: defaultTshirtSize(user.tshirtSizeLastYear, user.tshirtSize),
             tshirtConfirmed: false,

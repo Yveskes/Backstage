@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useState } from "react";
+import { TrashIcon } from "@/components/icons";
+import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
 import {
   canAssignRoles,
@@ -10,11 +13,14 @@ import {
   kindLabel,
   moduleOptions,
   type ModuleId,
-  type UserKind,
 } from "@/lib/permissions";
 import {
+  afbouwDayOptions,
+  isFestivalTask,
+  opbouwDayOptions,
   staffDayOptions,
   staffTaskOptions,
+  toggleId,
   type StaffDayId,
   type StaffTaskId,
 } from "@/lib/staff-tasks";
@@ -22,8 +28,10 @@ import {
 export default function MedewerkerDetailPage() {
   const params = useParams<{ userId: string }>();
   const { users, currentUser, sessionUser, updateUser, removeUser, setCurrentUserId } = useUsers();
+  const { planning, toggleLead, clearLeadIf } = useStaffPlanning();
   const router = useRouter();
   const user = users.find((entry) => entry.id === params.userId);
+  const [leadError, setLeadError] = useState<string | null>(null);
 
   if (!user) {
     return <p className="text-sm text-zinc-500">Deze persoon bestaat niet.</p>;
@@ -43,30 +51,37 @@ export default function MedewerkerDetailPage() {
   }
 
   function toggleTask(taskId: StaffTaskId) {
-    const next = person.tasks.includes(taskId)
+    const selected = person.tasks.includes(taskId);
+    const next = selected
       ? person.tasks.filter((id) => id !== taskId)
       : [...person.tasks, taskId];
-    updateUser(person.id, { tasks: next });
+
+    updateUser(person.id, {
+      tasks: next,
+      opbouwDays: taskId === "opbouw" && selected ? [] : person.opbouwDays,
+      afbouwDays: taskId === "afbouw" && selected ? [] : person.afbouwDays,
+    });
+
+    if (selected) {
+      clearLeadIf(taskId, person.id);
+    }
+    setLeadError(null);
+  }
+
+  function handleToggleLead(taskId: StaffTaskId) {
+    const result = toggleLead(taskId, person.id);
+    if (result.ok) {
+      setLeadError(null);
+      return;
+    }
+
+    const holder = users.find((entry) => entry.id === result.holderId);
+    const post = staffTaskOptions.find((task) => task.id === taskId)?.label ?? taskId;
+    setLeadError(`${holder?.fullName ?? "Iemand anders"} is al verantwoordelijke voor ${post}.`);
   }
 
   function setDays(days: StaffDayId) {
     updateUser(person.id, { days: person.days === days ? null : days });
-  }
-
-  function setKind(kind: UserKind) {
-    if (kind === "staff" && person.kind === "team") {
-      const confirmed = window.confirm(
-        `${person.fullName} wordt medewerker en verliest de teamonderdelen. Doorgaan?`,
-      );
-      if (!confirmed) {
-        return;
-      }
-    }
-
-    updateUser(person.id, {
-      kind,
-      modules: kind === "team" ? person.modules : [],
-    });
   }
 
   function handleDelete() {
@@ -93,21 +108,22 @@ export default function MedewerkerDetailPage() {
       </p>
       <div className="mt-2 flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">{user.fullName}</h1>
-        {canEditRights ? (
-          <select
-            value={person.kind}
-            onChange={(event) => setKind(event.target.value as UserKind)}
-            aria-label="Type"
-            className="shrink-0 appearance-none rounded bg-zinc-900 px-3 py-1.5 text-sm text-white"
-          >
-            <option value="staff">{kindLabel.staff}</option>
-            <option value="team">{kindLabel.team}</option>
-          </select>
-        ) : (
-          <span className="shrink-0 rounded bg-zinc-900 px-3 py-1.5 text-sm text-white">
+        <div className="flex shrink-0 items-center gap-1">
+          <span className="rounded bg-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-900">
             {kindLabel[user.kind]}
           </span>
-        )}
+          {canDelete ? (
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="rounded p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-700"
+              aria-label={`${user.fullName} verwijderen`}
+              title="Verwijderen"
+            >
+              <TrashIcon className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
       </div>
       <p className="mt-1 text-sm text-zinc-500">{user.email}</p>
 
@@ -138,29 +154,140 @@ export default function MedewerkerDetailPage() {
           })}
         </div>
 
-        <h3 className="mt-6 text-sm font-semibold text-zinc-900">Dag</h3>
-        <p className="mt-1 text-sm text-zinc-500">Vrijdag, zaterdag of beide dagen.</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {staffDayOptions.map((day) => {
-            const selected = person.days === day.id;
+        {person.tasks.length > 0 ? (
+          <div className="mt-6 space-y-2">
+            <h3 className="text-sm font-semibold text-zinc-900">Verantwoordelijke</h3>
+            <p className="text-sm text-zinc-500">
+              Eén persoon per post. Zet de toggle aan als deze persoon verantwoordelijke is.
+            </p>
+            {leadError ? (
+              <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+                {leadError}
+              </p>
+            ) : null}
+            {person.tasks.map((taskId) => {
+              const task = staffTaskOptions.find((option) => option.id === taskId);
+              const isLead = planning.responsible[taskId] === person.id;
 
-            return (
-              <button
-                key={day.id}
-                type="button"
-                disabled={!canManage}
-                onClick={() => setDays(day.id)}
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  selected
-                    ? "bg-zinc-900 text-white"
-                    : "border border-zinc-200 bg-white text-zinc-700"
-                } disabled:cursor-not-allowed disabled:opacity-60`}
-              >
-                {day.label}
-              </button>
-            );
-          })}
-        </div>
+              return (
+                <label
+                  key={taskId}
+                  className="flex items-center justify-between gap-3 rounded border border-zinc-200 px-3 py-2"
+                >
+                  <span className="text-sm text-zinc-800">
+                    {task?.label ?? taskId}
+                    {isLead ? " *" : ""}
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isLead}
+                    disabled={!canManage}
+                    onClick={() => handleToggleLead(taskId)}
+                    className={`relative h-5 w-9 rounded-full transition-colors disabled:opacity-60 ${
+                      isLead ? "bg-zinc-900" : "bg-zinc-200"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                        isLead ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                    <span className="sr-only">Verantwoordelijke {task?.label}</span>
+                  </button>
+                </label>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {person.tasks.includes("opbouw") ? (
+          <>
+            <h3 className="mt-6 text-sm font-semibold text-zinc-900">Opbouw</h3>
+            <p className="mt-1 text-sm text-zinc-500">Maandag tot vrijdag.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {opbouwDayOptions.map((day) => {
+                const selected = person.opbouwDays.includes(day.id);
+
+                return (
+                  <button
+                    key={day.id}
+                    type="button"
+                    disabled={!canManage}
+                    onClick={() =>
+                      updateUser(person.id, { opbouwDays: toggleId(person.opbouwDays, day.id) })
+                    }
+                    className={`rounded-full px-3 py-1.5 text-sm ${
+                      selected
+                        ? "bg-zinc-900 text-white"
+                        : "border border-zinc-200 bg-white text-zinc-700"
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
+
+        {person.tasks.includes("afbouw") ? (
+          <>
+            <h3 className="mt-6 text-sm font-semibold text-zinc-900">Afbouw</h3>
+            <p className="mt-1 text-sm text-zinc-500">Zondag tot dinsdag.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {afbouwDayOptions.map((day) => {
+                const selected = person.afbouwDays.includes(day.id);
+
+                return (
+                  <button
+                    key={day.id}
+                    type="button"
+                    disabled={!canManage}
+                    onClick={() =>
+                      updateUser(person.id, { afbouwDays: toggleId(person.afbouwDays, day.id) })
+                    }
+                    className={`rounded-full px-3 py-1.5 text-sm ${
+                      selected
+                        ? "bg-zinc-900 text-white"
+                        : "border border-zinc-200 bg-white text-zinc-700"
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
+
+        {person.tasks.some((task) => isFestivalTask(task)) ? (
+          <>
+            <h3 className="mt-6 text-sm font-semibold text-zinc-900">Festival</h3>
+            <p className="mt-1 text-sm text-zinc-500">Vrijdag, zaterdag of beide dagen.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {staffDayOptions.map((day) => {
+                const selected = person.days === day.id;
+
+                return (
+                  <button
+                    key={day.id}
+                    type="button"
+                    disabled={!canManage}
+                    onClick={() => setDays(day.id)}
+                    className={`rounded-full px-3 py-1.5 text-sm ${
+                      selected
+                        ? "bg-zinc-900 text-white"
+                        : "border border-zinc-200 bg-white text-zinc-700"
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
       </section>
 
       <section className="mt-4 rounded-2xl border border-zinc-200 bg-white p-6">
@@ -232,15 +359,6 @@ export default function MedewerkerDetailPage() {
             className="rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
           >
             Bekijk de app als {user.fullName}
-          </button>
-        ) : null}
-        {canDelete ? (
-          <button
-            type="button"
-            onClick={handleDelete}
-            className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm text-red-800 hover:bg-red-50"
-          >
-            Medewerker verwijderen
           </button>
         ) : null}
       </div>
