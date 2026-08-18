@@ -1,9 +1,10 @@
 "use client";
 
+import { CheckIcon } from "@/components/icons";
 import { useRef, useState, type DragEvent } from "react";
 import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
-import { formatFill, isPostUnderfilled } from "@/lib/staff-planning";
+import { formatFill, isPostComplete, isPostUnderfilled } from "@/lib/staff-planning";
 import {
   afbouwDayOptions,
   opbouwDayOptions,
@@ -194,6 +195,7 @@ export function BuildPlanning({
                 ];
                 const needed = planning.needed[column.kind]?.[day.id] ?? null;
                 const underfilled = isPostUnderfilled(needed, people.length);
+                const complete = isPostComplete(needed, people.length);
                 const dropKey = `${column.kind}:${day.id}`;
 
                 return (
@@ -208,14 +210,25 @@ export function BuildPlanning({
                       setOverKey((current) => (current === dropKey ? null : current));
                     }}
                     onDrop={(event) => onDropCell(event, column.kind, day.id)}
-                    className={`rounded border px-3 py-3 ${
+                    className={`relative rounded border px-3 py-3 ${
                       overKey === dropKey
                         ? "border-zinc-900 bg-zinc-100"
                         : underfilled
                           ? "border-red-200 bg-red-50"
-                          : "border-zinc-200 bg-zinc-50"
+                          : complete
+                            ? "border-emerald-300 bg-emerald-50"
+                            : "border-zinc-200 bg-zinc-50"
                     }`}
                   >
+                    {complete ? (
+                      <span
+                        className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm"
+                        title="Post volledig"
+                        aria-label="Post volledig"
+                      >
+                        <CheckIcon className="h-3 w-3" />
+                      </span>
+                    ) : null}
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <p className={`text-sm font-medium ${underfilled ? "text-red-900" : "text-zinc-900"}`}>
                         {day.label}

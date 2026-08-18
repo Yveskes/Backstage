@@ -11,6 +11,8 @@ import {
   parseInviteKind,
   verifyInviteToken,
 } from "@/lib/invite-token";
+import { insertActivityEvent } from "@/lib/activity-store";
+import { memberJoinedActivity } from "@/lib/activity";
 import { joinName } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -276,6 +278,14 @@ export async function acceptInvite(
       .from("invites")
       .update({ status: "accepted", accepted_at: new Date().toISOString() })
       .eq("token_hash", hashInviteToken(token));
+
+    await insertActivityEvent(
+      memberJoinedActivity({
+        actorId: existingId || "new",
+        actorName: fullName,
+        email,
+      }),
+    );
   } else {
     const supabase = await createSessionClient();
     const { error } = await supabase.auth.signUp({

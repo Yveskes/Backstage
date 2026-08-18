@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createSessionClient } from "@/lib/supabase/session";
 import { isAdminEmail } from "@/lib/env";
 import {
+  isUsablePersonName,
   joinName,
   sanitizeModules,
   splitName,
@@ -53,16 +54,28 @@ function namesFrom(row: {
   last_name?: string | null;
   email?: string | null;
 }) {
+  const email = String(row.email ?? "").trim().toLowerCase();
   const fullName = String(row.full_name ?? "").trim();
   const split = splitName(fullName);
-  const firstName = String(row.first_name ?? "").trim() || split.firstName;
-  const lastName = String(row.last_name ?? "").trim() || split.lastName;
-  const email = String(row.email ?? "").trim().toLowerCase();
+  const firstName = isUsablePersonName(String(row.first_name ?? ""), email)
+    ? String(row.first_name).trim()
+    : isUsablePersonName(split.firstName, email)
+      ? split.firstName
+      : isAdminEmail(email)
+        ? "Yves"
+        : "";
+  const lastName = isUsablePersonName(String(row.last_name ?? ""), email)
+    ? String(row.last_name).trim()
+    : isUsablePersonName(split.lastName, email)
+      ? split.lastName
+      : isAdminEmail(email)
+        ? "Moreel"
+        : "";
 
   return {
     firstName,
     lastName,
-    fullName: joinName(firstName, lastName) || fullName || email,
+    fullName: joinName(firstName, lastName) || (isUsablePersonName(fullName, email) ? fullName : ""),
     email,
   };
 }
@@ -96,12 +109,24 @@ export async function loadDirectoryPeople(): Promise<DirectoryPerson[]> {
 
   const { data: profiles, error: profileError } = await profileQuery;
   const people = new Map<string, DirectoryPerson>();
+  const repairEmails = new Set<string>();
 
   if (!profileError && profiles) {
     for (const row of profiles) {
       const names = namesFrom(row);
       if (!names.email) {
         continue;
+      }
+
+      const storedFirst = String(row.first_name ?? "").trim();
+      const storedFull = String(row.full_name ?? "").trim();
+      if (
+        isAdminEmail(names.email) &&
+        (!isUsablePersonName(storedFirst, names.email) ||
+          !isUsablePersonName(storedFull, names.email) ||
+          row.user_kind !== "admin")
+      ) {
+        repairEmails.add(names.email);
       }
 
       people.set(names.email, {
@@ -142,7 +167,37 @@ export async function loadDirectoryPeople(): Promise<DirectoryPerson[]> {
     }
   }
 
+  await repairAdminProfileNames(client, people, repairEmails);
   return [...people.values()];
+}
+
+async function repairAdminProfileNames(
+  client: NonNullable<ReturnType<typeof createAdminClient>> | Awaited<ReturnType<typeof createSessionClient>>,
+  people: Map<string, DirectoryPerson>,
+  emails: Set<string>,
+) {
+  for (const email of emails) {
+    const person = people.get(email);
+    if (!person) {
+      continue;
+    }
+
+    person.firstName = person.firstName || "Yves";
+    person.lastName = person.lastName || "Moreel";
+    person.fullName = joinName(person.firstName, person.lastName);
+    person.kind = "admin";
+
+    await client
+      .from("profiles")
+      .update({
+        first_name: person.firstName,
+        last_name: person.lastName,
+        full_name: person.fullName,
+        user_kind: "admin",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("email", person.email);
+  }
 }
 
 export async function loadProfileModules(): Promise<ProfileModules[]> {

@@ -2,7 +2,7 @@ import type { ModuleId, UserKind } from "@/lib/permissions";
 import { moduleOptions } from "@/lib/permissions";
 import type { StaffTaskId } from "@/lib/staff-tasks";
 
-export type NotificationKind = "sponsoring" | "general" | "tshirt" | "task";
+export type NotificationKind = "sponsoring" | "general" | "tshirt" | "task" | "activity";
 export type NotificationCategory = ModuleId;
 
 export type NotificationAttachment = {

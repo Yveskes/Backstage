@@ -13,6 +13,7 @@ import {
   defaultThreads,
   emptyThread,
   mockNotifications,
+  notificationPath,
   replyId,
   sanitizeThreads,
   toggleReactionList,
@@ -23,7 +24,16 @@ import {
   type NotificationThread,
   type NotificationThreads,
 } from "@/lib/notifications";
-import { canAccessPath, canManageStaff } from "@/lib/permissions";
+import { loadActivityEvents, saveActivityEvent } from "@/app/(app)/meldingen/activity-actions";
+import {
+  activityToNotification,
+  memberJoinedActivity,
+  mergeActivityEvents,
+  sanitizeActivityEvents,
+  type ActivityDraft,
+  type ActivityEvent,
+} from "@/lib/activity";
+import { canAccessPath, canManageStaff, firstNameOf } from "@/lib/permissions";
 import { useUsers } from "@/components/users-provider";
 import { needsTshirt } from "@/lib/tshirts";
 import { formatStaffTasks, isStaffTaskId, usersForTasks, type StaffTaskId } from "@/lib/staff-tasks";
@@ -32,6 +42,8 @@ const READ_KEY = "backstage.readNotificationIds";
 const TASK_MESSAGES_KEY = "backstage.taskMessages";
 const THREADS_KEY = "backstage.notificationThreads";
 const SEEN_REPLIES_KEY = "backstage.seenReplyIds";
+const ACTIVITY_KEY = "backstage.activityEvents";
+const SEEN_MEMBERS_KEY = "backstage.seenMemberEmails";
 
 export type TaskBroadcast = {
   id: string;
@@ -87,11 +99,12 @@ type NotificationsContextValue = {
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
-  const { currentUser, users, tshirtNotices } = useUsers();
+  const { currentUser, users, usersReady, tshirtNotices, refreshDirectory } = useUsers();
   const [readIds, setReadIds] = useState<string[]>([]);
   const [seenReplyIds, setSeenReplyIds] = useState<string[]>([]);
   const [taskBroadcasts, setTaskBroadcasts] = useState<TaskBroadcast[]>([]);
   const [threads, setThreads] = useState<NotificationThreads>(defaultThreads);
+  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -129,8 +142,45 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       setSeenReplyIds([]);
     }
 
+    try {
+      const rawActivity = window.localStorage.getItem(ACTIVITY_KEY);
+      setActivityEvents(rawActivity ? sanitizeActivityEvents(JSON.parse(rawActivity)) : []);
+    } catch {
+      setActivityEvents([]);
+    }
+
     setReady(true);
+
+    void loadActivityEvents()
+      .then((remote) => {
+        if (remote.length === 0) {
+          return;
+        }
+
+        setActivityEvents((current) => mergeActivityEvents(current, remote));
+      })
+      .catch(() => {
+        // Keep locally stored activity if the database table is not ready yet.
+      });
   }, []);
+
+  useEffect(() => {
+    function refreshFeed() {
+      void loadActivityEvents()
+        .then((remote) => {
+          if (remote.length === 0) {
+            return;
+          }
+
+          setActivityEvents((current) => mergeActivityEvents(current, remote));
+        })
+        .catch(() => undefined);
+      void refreshDirectory();
+    }
+
+    window.addEventListener("focus", refreshFeed);
+    return () => window.removeEventListener("focus", refreshFeed);
+  }, [refreshDirectory]);
 
   useEffect(() => {
     if (!ready) {
@@ -141,11 +191,93 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(SEEN_REPLIES_KEY, JSON.stringify(seenReplyIds));
     window.localStorage.setItem(TASK_MESSAGES_KEY, JSON.stringify(taskBroadcasts));
     window.localStorage.setItem(THREADS_KEY, JSON.stringify(threads));
-  }, [readIds, ready, seenReplyIds, taskBroadcasts, threads]);
+    window.localStorage.setItem(ACTIVITY_KEY, JSON.stringify(activityEvents));
+  }, [activityEvents, readIds, ready, seenReplyIds, taskBroadcasts, threads]);
 
   const markRead = useCallback((id: string) => {
     setReadIds((current) => (current.includes(id) ? current : [...current, id]));
   }, []);
+
+  const recordActivity = useCallback((draft: ActivityDraft) => {
+    setActivityEvents((current) => {
+      if (current.some((event) => event.sourceId === draft.sourceId)) {
+        return current;
+      }
+
+      const event: ActivityEvent = {
+        id: draft.id ?? crypto.randomUUID(),
+        createdAt: draft.createdAt ?? new Date().toISOString(),
+        kind: draft.kind,
+        actorId: draft.actorId,
+        actorName: draft.actorName,
+        title: draft.title,
+        body: draft.body,
+        href: draft.href,
+        category: draft.category,
+        sourceId: draft.sourceId,
+        audience: draft.audience,
+      };
+
+      void saveActivityEvent(event);
+      return mergeActivityEvents([event, ...current], []);
+    });
+  }, []);
+
+  const sourceTitle = useCallback(
+    (notificationId: string) =>
+      mockNotifications.find((item) => item.id === notificationId)?.title ||
+      taskBroadcasts.find((item) => item.id === notificationId)?.title ||
+      activityEvents.find((item) => `activity-${item.id}` === notificationId)?.title ||
+      "een melding",
+    [activityEvents, taskBroadcasts],
+  );
+
+  useEffect(() => {
+    if (!usersReady || !canManageStaff(currentUser)) {
+      return;
+    }
+
+    const memberEmails = users
+      .filter((user) => user.active !== false && !user.invitePending && user.email)
+      .map((user) => user.email.toLowerCase());
+
+    let seen: string[] | null = null;
+    try {
+      const raw = window.localStorage.getItem(SEEN_MEMBERS_KEY);
+      seen = raw ? (JSON.parse(raw) as string[]) : null;
+    } catch {
+      seen = null;
+    }
+
+    if (!seen) {
+      window.localStorage.setItem(SEEN_MEMBERS_KEY, JSON.stringify(memberEmails));
+      return;
+    }
+
+    const newcomers = users.filter(
+      (user) =>
+        user.active !== false &&
+        !user.invitePending &&
+        user.email &&
+        user.id !== currentUser.id &&
+        !seen.includes(user.email.toLowerCase()),
+    );
+
+    for (const person of newcomers) {
+      recordActivity(
+        memberJoinedActivity({
+          actorId: person.id,
+          actorName: person.fullName || firstNameOf(person),
+          email: person.email,
+        }),
+      );
+    }
+
+    window.localStorage.setItem(
+      SEEN_MEMBERS_KEY,
+      JSON.stringify([...new Set([...seen, ...memberEmails])]),
+    );
+  }, [currentUser, recordActivity, users, usersReady]);
 
   const addSeenReplyIds = useCallback((ids?: string[]) => {
     if (!ids || ids.length === 0) {
@@ -192,44 +324,100 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           },
         };
       });
+
+      const name = firstNameOf(currentUser);
+      const title = sourceTitle(notificationId);
+      recordActivity({
+        kind: "comment",
+        actorId: currentUser.id,
+        actorName: name,
+        title: `${name} gaf commentaar`,
+        body: `${name} schreef op “${title}”: ${text}`,
+        href: notificationPath(notificationId),
+        category: "medewerkers",
+        sourceId: `comment:${notificationId}:${comment.id}`,
+        audience: ["admin", "team"],
+      });
     },
-    [currentUser],
+    [currentUser, recordActivity, sourceTitle],
   );
 
   const toggleReaction = useCallback(
     (notificationId: string, emoji: string) => {
+      const thread = threads[notificationId] ?? emptyThread();
+      const already = thread.reactions.some(
+        (entry) => entry.emoji === emoji && entry.userIds.includes(currentUser.id),
+      );
+
       setThreads((current) => {
-        const thread = current[notificationId] ?? emptyThread();
+        const currentThread = current[notificationId] ?? emptyThread();
         return {
           ...current,
           [notificationId]: {
-            ...thread,
-            reactions: setUserReaction(thread.reactions, emoji, currentUser.id),
+            ...currentThread,
+            reactions: setUserReaction(currentThread.reactions, emoji, currentUser.id),
           },
         };
       });
+
+      if (!already) {
+        const name = firstNameOf(currentUser);
+        const title = sourceTitle(notificationId);
+        recordActivity({
+          kind: "reaction",
+          actorId: currentUser.id,
+          actorName: name,
+          title: `${name} reageerde`,
+          body: `${name} gaf ${emoji} op “${title}”.`,
+          href: notificationPath(notificationId),
+          category: "medewerkers",
+          sourceId: `reaction:${notificationId}:${currentUser.id}:${emoji}`,
+          audience: ["admin", "team"],
+        });
+      }
     },
-    [currentUser.id],
+    [currentUser, recordActivity, sourceTitle, threads],
   );
 
   const toggleCommentReaction = useCallback(
     (notificationId: string, commentId: string, emoji: string) => {
+      const thread = threads[notificationId] ?? emptyThread();
+      const comment = thread.comments.find((entry) => entry.id === commentId);
+      const already = Boolean(
+        comment?.reactions.some((entry) => entry.emoji === emoji && entry.userIds.includes(currentUser.id)),
+      );
+
       setThreads((current) => {
-        const thread = current[notificationId] ?? emptyThread();
+        const currentThread = current[notificationId] ?? emptyThread();
         return {
           ...current,
           [notificationId]: {
-            ...thread,
-            comments: thread.comments.map((comment) =>
-              comment.id === commentId
-                ? { ...comment, reactions: toggleReactionList(comment.reactions, emoji, currentUser.id) }
-                : comment,
+            ...currentThread,
+            comments: currentThread.comments.map((entry) =>
+              entry.id === commentId
+                ? { ...entry, reactions: toggleReactionList(entry.reactions, emoji, currentUser.id) }
+                : entry,
             ),
           },
         };
       });
+
+      if (!already && comment) {
+        const name = firstNameOf(currentUser);
+        recordActivity({
+          kind: "reaction",
+          actorId: currentUser.id,
+          actorName: name,
+          title: `${name} reageerde`,
+          body: `${name} gaf ${emoji} op een reactie van ${comment.userName}.`,
+          href: notificationPath(notificationId),
+          category: "medewerkers",
+          sourceId: `reaction:${notificationId}:${commentId}:${currentUser.id}:${emoji}`,
+          audience: ["admin", "team"],
+        });
+      }
     },
-    [currentUser.id],
+    [currentUser, recordActivity, threads],
   );
 
   const sendTaskBroadcast = useCallback(
@@ -321,7 +509,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         };
       });
 
+    const activityNotifications = activityEvents
+      .filter((event) => event.actorId !== currentUser.id)
+      .map((event) => activityToNotification(event, readIds));
+
     const notifications = [
+      ...activityNotifications,
       ...taskNotifications,
       ...extra,
       ...mockNotifications.map((item) => ({
@@ -339,6 +532,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
       if (item.audience && !item.audience.includes(currentUser.kind)) {
         return false;
+      }
+
+      if (item.kind === "activity") {
+        return true;
       }
 
       return !item.href || item.href.startsWith("#") || canAccessPath(currentUser, item.href);
@@ -385,6 +582,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       toggleCommentReaction,
     };
   }, [
+    activityEvents,
     addComment,
     addSeenReplyIds,
     currentUser,

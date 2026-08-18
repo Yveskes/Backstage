@@ -114,6 +114,10 @@ export function isPostUnderfilled(needed: number | null, assigned: number) {
   return needed === null || assigned < needed;
 }
 
+export function isPostComplete(needed: number | null, assigned: number) {
+  return needed !== null && assigned >= needed;
+}
+
 export function formatFill(needed: number | null, assigned: number) {
   if (needed === null) {
     return `${assigned} / —`;

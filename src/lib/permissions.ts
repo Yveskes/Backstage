@@ -18,7 +18,7 @@ export type ModuleOption = {
   description: string;
 };
 
-const moduleIds: ModuleId[] = [
+export const moduleIds: ModuleId[] = [
   "medewerkers",
   "social-media",
   "documenten",
@@ -202,8 +202,31 @@ export function joinName(firstName: string, lastName: string) {
   return [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
 }
 
-export function firstNameOf(user: Pick<AppUser, "firstName" | "fullName">) {
-  return user.firstName.trim() || splitName(user.fullName).firstName || user.fullName;
+export function isUsablePersonName(value: string, email = "") {
+  const name = value.trim();
+  if (!name) {
+    return false;
+  }
+
+  if (name.includes("@") || name.toLowerCase() === email.trim().toLowerCase()) {
+    return false;
+  }
+
+  return true;
+}
+
+export function firstNameOf(user: Pick<AppUser, "firstName" | "fullName"> & { email?: string }) {
+  const email = user.email ?? "";
+  if (isUsablePersonName(user.firstName, email)) {
+    return user.firstName.trim();
+  }
+
+  const fromFull = splitName(user.fullName).firstName;
+  if (isUsablePersonName(fromFull, email)) {
+    return fromFull;
+  }
+
+  return "daar";
 }
 
 export function initialsFromName(firstName: string, lastName = "") {

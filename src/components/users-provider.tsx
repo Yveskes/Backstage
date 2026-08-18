@@ -3,7 +3,7 @@
 import { loadDirectoryPeople, type DirectoryPerson } from "@/app/(app)/medewerkers/actions";
 import { isAdminEmail } from "@/lib/admins";
 import { defaultUsers } from "@/lib/users";
-import { createNewUser, defaultTshirtSize, joinName, sanitizeDays, sanitizeModules, sanitizeTasks, splitName, type AppUser } from "@/lib/permissions";
+import { createNewUser, defaultTshirtSize, isUsablePersonName, joinName, sanitizeDays, sanitizeModules, sanitizeTasks, splitName, type AppUser } from "@/lib/permissions";
 import { sanitizeAfbouwDays, sanitizeOpbouwDays } from "@/lib/staff-tasks";
 import { needsTshirt, sanitizeTshirtSize, type TshirtSize } from "@/lib/tshirts";
 import { createBrowserClient } from "@/lib/supabase/client";
@@ -31,6 +31,7 @@ export type TshirtNotice = {
 
 type UsersContextValue = {
   users: AppUser[];
+  usersReady: boolean;
   currentUser: AppUser;
   sessionUser: AppUser;
   realAdminId: string;
@@ -108,6 +109,18 @@ function readUsers(): AppUser[] {
   }
 }
 
+function pickName(fromDb: string, fromLocal: string | undefined, email: string) {
+  if (isUsablePersonName(fromDb, email)) {
+    return fromDb;
+  }
+
+  if (fromLocal && isUsablePersonName(fromLocal, email)) {
+    return fromLocal;
+  }
+
+  return fromDb;
+}
+
 function mergeDirectory(users: AppUser[], people: DirectoryPerson[]): AppUser[] {
   if (people.length === 0) {
     return users;
@@ -121,14 +134,16 @@ function mergeDirectory(users: AppUser[], people: DirectoryPerson[]): AppUser[] 
     const email = person.email.toLowerCase();
     seen.add(email);
     const existing = localByEmail.get(email);
+    const firstName = pickName(person.firstName, existing?.firstName, email);
+    const lastName = pickName(person.lastName, existing?.lastName, email);
 
     merged.push(
       normalizeUser({
         ...(existing ?? {}),
         id: person.id,
-        firstName: person.firstName || existing?.firstName,
-        lastName: person.lastName || existing?.lastName,
-        fullName: person.fullName || existing?.fullName,
+        firstName,
+        lastName,
+        fullName: joinName(firstName, lastName) || pickName(person.fullName, existing?.fullName, email),
         email,
         kind: person.kind,
         modules: person.modules.length > 0 ? person.modules : existing?.modules,
@@ -153,9 +168,11 @@ function applyLoggedInEmail(
   metadata?: { first_name?: string; last_name?: string; full_name?: string },
 ) {
   const admin = isAdminEmail(email);
-  const names = splitName(metadata?.full_name || "");
-  const firstName = metadata?.first_name || names.firstName || (admin ? "Yves" : email.split("@")[0]);
-  const lastName = metadata?.last_name || names.lastName || (admin ? "Moreel" : "");
+  const metaFirst = isUsablePersonName(metadata?.first_name ?? "", email) ? metadata?.first_name ?? "" : "";
+  const metaLast = isUsablePersonName(metadata?.last_name ?? "", email) ? metadata?.last_name ?? "" : "";
+  const names = splitName(isUsablePersonName(metadata?.full_name ?? "", email) ? metadata?.full_name ?? "" : "");
+  const firstName = metaFirst || names.firstName || (admin ? "Yves" : "");
+  const lastName = metaLast || names.lastName || (admin ? "Moreel" : "");
 
   const byEmail = users.find((user) => user.email.toLowerCase() === email);
   if (byEmail) {
@@ -167,8 +184,8 @@ function applyLoggedInEmail(
               ...user,
               email,
               kind: admin ? "admin" : user.kind,
-              firstName: user.firstName.includes("@") ? firstName : user.firstName,
-              lastName: user.lastName || lastName,
+              firstName: isUsablePersonName(user.firstName, email) ? user.firstName : firstName,
+              lastName: isUsablePersonName(user.lastName, email) ? user.lastName : lastName,
             })
           : user,
       )
@@ -301,6 +318,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
 
     return {
       users,
+      usersReady: ready,
       currentUser,
       sessionUser,
       realAdminId: sessionUser.id,
@@ -455,7 +473,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
         }
       },
     };
-  }, [users, sessionUserId, viewAsUserId, tshirtNotices, refreshDirectory]);
+  }, [users, sessionUserId, viewAsUserId, tshirtNotices, refreshDirectory, ready]);
 
   return <UsersContext.Provider value={value}>{children}</UsersContext.Provider>;
 }
