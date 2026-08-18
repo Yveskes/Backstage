@@ -13,11 +13,13 @@ import {
   defaultThreads,
   emptyThread,
   mockNotifications,
+  replyId,
   sanitizeThreads,
   toggleReactionList,
   setUserReaction,
   type AppNotification,
   type NotificationComment,
+  type NotificationReply,
   type NotificationThread,
   type NotificationThreads,
 } from "@/lib/notifications";
@@ -29,6 +31,7 @@ import { formatStaffTasks, isStaffTaskId, usersForTasks, type StaffTaskId } from
 const READ_KEY = "backstage.readNotificationIds";
 const TASK_MESSAGES_KEY = "backstage.taskMessages";
 const THREADS_KEY = "backstage.notificationThreads";
+const SEEN_REPLIES_KEY = "backstage.seenReplyIds";
 
 export type TaskBroadcast = {
   id: string;
@@ -67,9 +70,13 @@ function normalizeBroadcast(raw: Partial<TaskBroadcast> & { taskId?: StaffTaskId
 type NotificationsContextValue = {
   notifications: AppNotification[];
   unreadCount: number;
+  replies: NotificationReply[];
+  unreadReplyCount: number;
   taskBroadcasts: TaskBroadcast[];
   markRead: (id: string) => void;
   markAllRead: () => void;
+  markRepliesRead: (ids?: string[]) => void;
+  markThreadRepliesRead: (notificationId: string) => void;
   sendTaskBroadcast: (input: { taskIds: StaffTaskId[]; title: string; body: string }) => number;
   threadFor: (notificationId: string) => NotificationThread;
   addComment: (notificationId: string, body: string) => void;
@@ -82,6 +89,7 @@ const NotificationsContext = createContext<NotificationsContextValue | null>(nul
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { currentUser, users, tshirtNotices } = useUsers();
   const [readIds, setReadIds] = useState<string[]>([]);
+  const [seenReplyIds, setSeenReplyIds] = useState<string[]>([]);
   const [taskBroadcasts, setTaskBroadcasts] = useState<TaskBroadcast[]>([]);
   const [threads, setThreads] = useState<NotificationThreads>(defaultThreads);
   const [ready, setReady] = useState(false);
@@ -114,6 +122,13 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       setThreads(defaultThreads);
     }
 
+    try {
+      const rawSeen = window.localStorage.getItem(SEEN_REPLIES_KEY);
+      setSeenReplyIds(rawSeen ? (JSON.parse(rawSeen) as string[]) : []);
+    } catch {
+      setSeenReplyIds([]);
+    }
+
     setReady(true);
   }, []);
 
@@ -123,12 +138,27 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     }
 
     window.localStorage.setItem(READ_KEY, JSON.stringify(readIds));
+    window.localStorage.setItem(SEEN_REPLIES_KEY, JSON.stringify(seenReplyIds));
     window.localStorage.setItem(TASK_MESSAGES_KEY, JSON.stringify(taskBroadcasts));
     window.localStorage.setItem(THREADS_KEY, JSON.stringify(threads));
-  }, [readIds, ready, taskBroadcasts, threads]);
+  }, [readIds, ready, seenReplyIds, taskBroadcasts, threads]);
 
   const markRead = useCallback((id: string) => {
     setReadIds((current) => (current.includes(id) ? current : [...current, id]));
+  }, []);
+
+  const markRepliesRead = useCallback((ids?: string[]) => {
+    if (!ids || ids.length === 0) {
+      return;
+    }
+
+    setSeenReplyIds((current) => {
+      const next = new Set(current);
+      for (const id of ids) {
+        next.add(id);
+      }
+      return [...next];
+    });
   }, []);
 
   const threadFor = useCallback(
@@ -314,13 +344,39 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       return !item.href || item.href.startsWith("#") || canAccessPath(currentUser, item.href);
     });
 
+    const replies: NotificationReply[] = notifications
+      .flatMap((item) => {
+        const comments = (threads[item.id] ?? emptyThread()).comments;
+        return comments
+          .filter((comment) => comment.userId !== currentUser.id)
+          .map((comment) => ({
+            id: replyId(item.id, comment.id),
+            notificationId: item.id,
+            notificationTitle: item.title,
+            userName: comment.userName,
+            body: comment.body,
+            time: comment.time,
+            unread: !seenReplyIds.includes(replyId(item.id, comment.id)),
+          }));
+      })
+      .reverse();
+
     return {
       notifications,
       unreadCount: notifications.filter((item) => item.unread).length,
+      replies,
+      unreadReplyCount: replies.filter((item) => item.unread).length,
       taskBroadcasts,
       markRead,
       markAllRead() {
         setReadIds(notifications.map((item) => item.id));
+      },
+      markRepliesRead(ids) {
+        markRepliesRead(ids ?? replies.map((item) => item.id));
+      },
+      markThreadRepliesRead(notificationId) {
+        const comments = (threads[notificationId] ?? emptyThread()).comments;
+        markRepliesRead(comments.map((comment) => replyId(notificationId, comment.id)));
       },
       sendTaskBroadcast,
       threadFor,
@@ -332,7 +388,9 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     addComment,
     currentUser,
     markRead,
+    markRepliesRead,
     readIds,
+    seenReplyIds,
     sendTaskBroadcast,
     taskBroadcasts,
     threadFor,

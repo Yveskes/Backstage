@@ -63,11 +63,7 @@ export function TshirtPicker() {
 
       {confirmed ? (
         <p className="mt-3 text-sm text-emerald-900">
-          Indien je toch nog een andere maat wil,{" "}
-          <a href="#chat" className="font-medium underline underline-offset-2">
-            stuur een bericht
-          </a>
-          .
+          Indien je toch nog een andere maat wil, laat het weten aan Yves.
         </p>
       ) : (
         <>

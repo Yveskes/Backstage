@@ -123,7 +123,6 @@ export function pathToModule(pathname: string): ModuleId | "public" | "staff-por
   if (
     pathname === "/" ||
     pathname === "/profiel" ||
-    pathname === "/chat" ||
     pathname === "/meldingen" ||
     pathname.startsWith("/meldingen/")
   ) {
@@ -164,7 +163,6 @@ export function canAccessPath(user: AppUser, pathname: string) {
     return (
       user.kind !== "staff" ||
       pathname === "/profiel" ||
-      pathname === "/chat" ||
       pathname === "/meldingen" ||
       pathname.startsWith("/meldingen/")
     );

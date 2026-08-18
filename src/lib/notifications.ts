@@ -42,6 +42,19 @@ export function notificationPath(id: string) {
   return `/meldingen/${id}`;
 }
 
+export function replyId(notificationId: string, commentId: string) {
+  return `${notificationId}:${commentId}`;
+}
+
+export type NotificationReply = {
+  id: string;
+  notificationId: string;
+  notificationTitle: string;
+  userName: string;
+  body: string;
+  time: string;
+};
+
 export function imageAttachments(item: AppNotification) {
   return (item.attachments ?? []).filter((file) => file.type === "image");
 }

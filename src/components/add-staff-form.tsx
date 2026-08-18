@@ -118,7 +118,7 @@ export function AddStaffForm() {
         <p className="mt-2 text-xs text-zinc-500">
           {invitingTeam
             ? "Alleen admin. Er gaat geen mail uit: jij kopieert de link en deelt die zelf (WhatsApp, mail, …)."
-            : "Medewerkers zien hun eigen pagina en chat. Team Zeverrock nodig? Dat kan alleen een admin via een link."}
+            : "Medewerkers zien hun eigen pagina en meldingen. Team Zeverrock nodig? Dat kan alleen een admin via een link."}
         </p>
       </fieldset>
 

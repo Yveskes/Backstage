@@ -1,8 +1,9 @@
 "use client";
 
+import { saveUserModules } from "@/app/(app)/medewerkers/actions";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { TrashIcon } from "@/components/icons";
 import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
@@ -12,6 +13,7 @@ import {
   homePath,
   kindLabel,
   moduleOptions,
+  type AppUser,
   type ModuleId,
 } from "@/lib/permissions";
 import {
@@ -24,6 +26,110 @@ import {
   type StaffDayId,
   type StaffTaskId,
 } from "@/lib/staff-tasks";
+
+function sameModules(a: ModuleId[], b: ModuleId[]) {
+  return a.length === b.length && a.every((id) => b.includes(id));
+}
+
+function MenuModulesEditor({
+  person,
+  canEdit,
+}: {
+  person: AppUser;
+  canEdit: boolean;
+}) {
+  const { updateUser } = useUsers();
+  const [draft, setDraft] = useState<ModuleId[]>(person.modules);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const dirty = !sameModules(draft, person.modules);
+
+  useEffect(() => {
+    setDraft(person.modules);
+    setMessage(null);
+    setError(null);
+  }, [person.id]);
+
+  useEffect(() => {
+    if (!dirty) {
+      setDraft(person.modules);
+    }
+  }, [person.modules, dirty]);
+
+  function toggle(moduleId: ModuleId) {
+    setDraft((current) =>
+      current.includes(moduleId)
+        ? current.filter((id) => id !== moduleId)
+        : [...current, moduleId],
+    );
+    setMessage(null);
+    setError(null);
+  }
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    const result = await saveUserModules(person.email, draft);
+    updateUser(person.id, { modules: draft });
+    setSaving(false);
+
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+
+    setMessage("Opgeslagen.");
+  }
+
+  return (
+    <>
+      <div className="mt-5 space-y-3">
+        {moduleOptions.map((option) => {
+          const checked = draft.includes(option.id);
+
+          return (
+            <label
+              key={option.id}
+              className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 px-4 py-3"
+            >
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={checked}
+                disabled={!canEdit || saving}
+                onChange={() => toggle(option.id)}
+              />
+              <span>
+                <span className="block text-sm font-medium text-zinc-900">{option.label}</span>
+                <span className="mt-0.5 block text-sm text-zinc-500">{option.description}</span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {canEdit && dirty ? (
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving}
+            className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+          >
+            {saving ? "Opslaan..." : "Opslaan"}
+          </button>
+          <p className="text-sm text-zinc-500">Niet opgeslagen.</p>
+        </div>
+      ) : null}
+      {message ? <p className="mt-3 text-sm text-zinc-600">{message}</p> : null}
+      {error ? (
+        <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+          {error}
+        </p>
+      ) : null}
+    </>
+  );
+}
 
 export default function MedewerkerDetailPage() {
   const params = useParams<{ userId: string }>();
@@ -42,13 +148,6 @@ export default function MedewerkerDetailPage() {
   const canManage = canManageStaff(currentUser);
   const canEditRights = isAdmin && person.kind !== "admin";
   const canDelete = canManage && person.id !== sessionUser.id && person.kind !== "admin";
-
-  function toggleModule(moduleId: ModuleId) {
-    const next = person.modules.includes(moduleId)
-      ? person.modules.filter((id) => id !== moduleId)
-      : [...person.modules, moduleId];
-    updateUser(person.id, { modules: next });
-  }
 
   function toggleTask(taskId: StaffTaskId) {
     const selected = person.tasks.includes(taskId);
@@ -306,8 +405,8 @@ export default function MedewerkerDetailPage() {
         <section className="mt-4 rounded-2xl border border-zinc-200 bg-white p-6">
           <h2 className="text-base font-semibold text-zinc-900">Toegang</h2>
           <p className="mt-2 text-sm leading-6 text-zinc-500">
-            Deze medewerker heeft de standaardtoegang: eigen pagina, meldingen en
-            chat. Extra backstage-onderdelen kan alleen admin aanzetten.
+            Deze medewerker heeft de standaardtoegang: eigen pagina en meldingen.
+            Extra backstage-onderdelen kan alleen admin aanzetten.
           </p>
         </section>
       ) : (
@@ -320,30 +419,7 @@ export default function MedewerkerDetailPage() {
           {user.kind === "admin" ? (
             <p className="mt-4 text-sm text-zinc-700">Admin heeft toegang tot alle onderdelen.</p>
           ) : (
-            <div className="mt-5 space-y-3">
-              {moduleOptions.map((option) => {
-                const checked = user.modules.includes(option.id);
-
-                return (
-                  <label
-                    key={option.id}
-                    className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 px-4 py-3"
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={checked}
-                      disabled={!canEditRights}
-                      onChange={() => toggleModule(option.id)}
-                    />
-                    <span>
-                      <span className="block text-sm font-medium text-zinc-900">{option.label}</span>
-                      <span className="mt-0.5 block text-sm text-zinc-500">{option.description}</span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
+            <MenuModulesEditor person={person} canEdit={canEditRights} />
           )}
         </section>
       )}

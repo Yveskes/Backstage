@@ -1,5 +1,6 @@
 "use client";
 
+import { loadProfileModules, type ProfileModules } from "@/app/(app)/medewerkers/actions";
 import { isAdminEmail } from "@/lib/admins";
 import { defaultUsers } from "@/lib/users";
 import { createNewUser, defaultTshirtSize, joinName, sanitizeDays, sanitizeModules, sanitizeTasks, splitName, type AppUser } from "@/lib/permissions";
@@ -104,6 +105,18 @@ function readUsers(): AppUser[] {
   }
 }
 
+function mergeProfileModules(users: AppUser[], rows: ProfileModules[]): AppUser[] {
+  if (rows.length === 0) {
+    return users;
+  }
+
+  const byEmail = new Map(rows.map((row) => [row.email, row.modules]));
+  return users.map((user) => {
+    const modules = byEmail.get(user.email.toLowerCase());
+    return modules === undefined ? user : { ...user, modules };
+  });
+}
+
 function applyLoggedInEmail(
   users: AppUser[],
   email: string,
@@ -183,29 +196,35 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       const supabase = createBrowserClient();
       void supabase.auth
         .getUser()
-        .then(({ data }) => {
+        .then(async ({ data }) => {
           const email = data.user?.email?.toLowerCase();
-          if (!email) {
-            setReady(true);
-            return;
+          let nextUsers = storedUsers;
+
+          if (email) {
+            const applied = applyLoggedInEmail(storedUsers, email, data.user?.user_metadata);
+            nextUsers = applied.users;
+            setSessionUserId(applied.sessionId);
+
+            const storedViewAs = window.localStorage.getItem(VIEW_AS_KEY);
+            if (
+              storedViewAs &&
+              storedViewAs !== applied.sessionId &&
+              applied.users.some((user) => user.id === storedViewAs)
+            ) {
+              setViewAsUserId(storedViewAs);
+            } else {
+              setViewAsUserId(null);
+              window.localStorage.removeItem(VIEW_AS_KEY);
+            }
           }
 
-          const applied = applyLoggedInEmail(storedUsers, email, data.user?.user_metadata);
-          setUsers(applied.users);
-          setSessionUserId(applied.sessionId);
-
-          const storedViewAs = window.localStorage.getItem(VIEW_AS_KEY);
-          if (
-            storedViewAs &&
-            storedViewAs !== applied.sessionId &&
-            applied.users.some((user) => user.id === storedViewAs)
-          ) {
-            setViewAsUserId(storedViewAs);
-          } else {
-            setViewAsUserId(null);
-            window.localStorage.removeItem(VIEW_AS_KEY);
+          try {
+            nextUsers = mergeProfileModules(nextUsers, await loadProfileModules());
+          } catch {
+            // Keep local users if the database is not ready yet.
           }
 
+          setUsers(nextUsers);
           setReady(true);
         })
         .catch(() => {
