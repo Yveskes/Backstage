@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon } from "@/components/icons";
+import { CheckIcon, StarIcon } from "@/components/icons";
 import { useRef, useState, type DragEvent } from "react";
 import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
@@ -66,13 +66,9 @@ function withoutTaskIfEmpty(tasks: StaffTaskId[], task: BuildKind, remainingDays
   return tasks.filter((entry) => entry !== task);
 }
 
-export function BuildPlanning({
-  onLeadError,
-}: {
-  onLeadError: (message: string | null) => void;
-}) {
+export function BuildPlanning() {
   const { users, updateUser } = useUsers();
-  const { planning, setNeed, toggleLead } = useStaffPlanning();
+  const { planning, setNeed } = useStaffPlanning();
   const [overKey, setOverKey] = useState<string | null>(null);
   const dragging = useRef(false);
 
@@ -134,22 +130,6 @@ export function BuildPlanning({
     } catch {
       return;
     }
-  }
-
-  function handleLead(taskId: BuildKind, userId: string) {
-    if (dragging.current) {
-      dragging.current = false;
-      return;
-    }
-
-    const result = toggleLead(taskId, userId);
-    if (result.ok) {
-      onLeadError(null);
-      return;
-    }
-
-    const holder = users.find((user) => user.id === result.holderId);
-    onLeadError(`${holder?.fullName ?? "Iemand anders"} is al verantwoordelijke voor deze post.`);
   }
 
   return (
@@ -278,18 +258,17 @@ export function BuildPlanning({
                                     dragging.current = false;
                                   }, 0);
                                 }}
-                                onClick={() => handleLead(column.kind, user.id)}
-                                className={`flex w-full cursor-grab items-center rounded bg-white px-2 py-1.5 text-left text-sm text-zinc-800 active:cursor-grabbing ${
-                                  isLead ? "font-semibold text-zinc-900" : ""
-                                }`}
+                                className="flex w-full cursor-grab items-center justify-between gap-2 rounded bg-white px-2 py-1.5 text-left text-sm text-zinc-800 active:cursor-grabbing"
                                 title={
                                   isLead
                                     ? "Verantwoordelijke. Sleep naar een andere dag."
-                                    : "Sleep naar een andere dag. Klik om verantwoordelijke te maken."
+                                    : "Sleep naar een andere dag."
                                 }
                               >
-                                {user.fullName || user.email}
-                                {isLead ? " *" : ""}
+                                <span className="min-w-0 truncate">{user.fullName || user.email}</span>
+                                {isLead ? (
+                                  <StarIcon className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                                ) : null}
                               </button>
                             </li>
                           );

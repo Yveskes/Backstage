@@ -27,6 +27,14 @@ export function TrashIcon({ className }: { className?: string }) {
   );
 }
 
+export function StarIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M12 3.2 14.4 9h6.1l-4.9 3.7 1.9 6.1L12 15.6 6.5 18.8 8.4 12.7 3.5 9h6.1L12 3.2Z" />
+    </svg>
+  );
+}
+
 export function CrownIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">

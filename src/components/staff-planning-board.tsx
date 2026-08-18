@@ -6,7 +6,6 @@ import { FestivalPlanning } from "@/components/festival-planning";
 
 export function StaffPlanningBoard() {
   const [tab, setTab] = useState<"build" | "festival">("festival");
-  const [leadError, setLeadError] = useState<string | null>(null);
 
   return (
     <div className="space-y-6">
@@ -31,15 +30,7 @@ export function StaffPlanningBoard() {
         </button>
       </div>
 
-      {leadError ? (
-        <p className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">{leadError}</p>
-      ) : null}
-
-      {tab === "build" ? (
-        <BuildPlanning onLeadError={setLeadError} />
-      ) : (
-        <FestivalPlanning onLeadError={setLeadError} />
-      )}
+      {tab === "build" ? <BuildPlanning /> : <FestivalPlanning />}
     </div>
   );
 }

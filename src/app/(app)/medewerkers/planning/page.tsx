@@ -30,7 +30,7 @@ export default function StaffPlanningPage() {
 
       <PageHeader
         title="Planning"
-        description="Opbouw (ma–vr) en afbouw (zo–di) staan apart van de festivaldagen. Per dag zie je wie helpt, hoeveel plaatsen nodig zijn, en wie verantwoordelijke is (*)."
+        description="Opbouw (ma–vr) en afbouw (zo–di) staan apart van de festivaldagen. Per dag zie je wie helpt en hoeveel plaatsen nodig zijn. De ster toont de verantwoordelijke; dat stel je in op de medewerkerspagina."
       />
 
       <StaffPlanningBoard />

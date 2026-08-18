@@ -87,7 +87,7 @@ export function sanitizeActivityEvents(raw: unknown): ActivityEvent[] {
   }
 
   return raw
-    .map((entry) => {
+    .map((entry): ActivityEvent | null => {
       if (!entry || typeof entry !== "object") {
         return null;
       }
@@ -101,19 +101,24 @@ export function sanitizeActivityEvents(raw: unknown): ActivityEvent[] {
         ? data.audience.filter((item): item is UserKind => item === "admin" || item === "team" || item === "staff")
         : [];
 
-      return {
+      const event: ActivityEvent = {
         id: String(data.id),
         kind: data.kind,
         actorId: String(data.actorId ?? ""),
         actorName: String(data.actorName),
         title: String(data.title),
         body: String(data.body),
-        href: typeof data.href === "string" ? data.href : undefined,
         category: isModuleId(data.category) ? data.category : "medewerkers",
         sourceId: String(data.sourceId),
-        audience: audience.length > 0 ? audience : (["admin", "team"] as UserKind[]),
+        audience: audience.length > 0 ? audience : ["admin", "team"],
         createdAt: typeof data.createdAt === "string" ? data.createdAt : new Date().toISOString(),
-      } satisfies ActivityEvent;
+      };
+
+      if (typeof data.href === "string" && data.href) {
+        event.href = data.href;
+      }
+
+      return event;
     })
     .filter((entry): entry is ActivityEvent => entry !== null);
 }
