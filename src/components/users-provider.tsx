@@ -385,10 +385,6 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     };
   }, [users, sessionUserId, viewAsUserId, tshirtNotices]);
 
-  if (!ready) {
-    return <div className="min-h-dvh bg-zinc-100" />;
-  }
-
   return <UsersContext.Provider value={value}>{children}</UsersContext.Provider>;
 }
 

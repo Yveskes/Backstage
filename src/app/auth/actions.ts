@@ -123,7 +123,15 @@ export async function createInvite(
     return { error: "Alleen admin kan iemand als team uitnodigen." };
   }
 
-  const token = createInviteToken(email, firstName, lastName, kind);
+  let token: string;
+  try {
+    token = createInviteToken(email, firstName, lastName, kind);
+  } catch {
+    return {
+      error:
+        "Uitnodigen is nog niet ingesteld op de server. Zet SUPABASE_SERVICE_ROLE_KEY en INVITE_SECRET bij Vercel.",
+    };
+  }
   const inviteUrl = `${getSiteUrl()}/uitnodiging?token=${encodeURIComponent(token)}`;
   const dates = inviteExpiryDates();
   const admin = createAdminClient();
