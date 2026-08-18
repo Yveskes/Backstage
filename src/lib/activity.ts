@@ -59,18 +59,23 @@ export function activityNotificationId(eventId: string) {
 
 export function activityToNotification(event: ActivityEvent, readIds: string[]): AppNotification {
   const id = activityNotificationId(event.id);
-  return {
+  const notification: AppNotification = {
     id,
     title: event.title,
     body: event.body,
     time: formatActivityTime(event.createdAt),
     unread: !readIds.includes(id),
-    href: event.href,
     kind: "activity",
     category: event.category,
     audience: event.audience,
     fromUserId: event.actorId,
   };
+
+  if (event.href) {
+    notification.href = event.href;
+  }
+
+  return notification;
 }
 
 function isActivityKind(value: unknown): value is ActivityKind {
@@ -86,41 +91,43 @@ export function sanitizeActivityEvents(raw: unknown): ActivityEvent[] {
     return [];
   }
 
-  return raw
-    .map((entry): ActivityEvent | null => {
-      if (!entry || typeof entry !== "object") {
-        return null;
-      }
+  const events: ActivityEvent[] = [];
 
-      const data = entry as Partial<ActivityEvent>;
-      if (!data.id || !isActivityKind(data.kind) || !data.actorName || !data.title || !data.body || !data.sourceId) {
-        return null;
-      }
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
 
-      const audience = Array.isArray(data.audience)
-        ? data.audience.filter((item): item is UserKind => item === "admin" || item === "team" || item === "staff")
-        : [];
+    const data = entry as Partial<ActivityEvent>;
+    if (!data.id || !isActivityKind(data.kind) || !data.actorName || !data.title || !data.body || !data.sourceId) {
+      continue;
+    }
 
-      const event: ActivityEvent = {
-        id: String(data.id),
-        kind: data.kind,
-        actorId: String(data.actorId ?? ""),
-        actorName: String(data.actorName),
-        title: String(data.title),
-        body: String(data.body),
-        category: isModuleId(data.category) ? data.category : "medewerkers",
-        sourceId: String(data.sourceId),
-        audience: audience.length > 0 ? audience : ["admin", "team"],
-        createdAt: typeof data.createdAt === "string" ? data.createdAt : new Date().toISOString(),
-      };
+    const audience = Array.isArray(data.audience)
+      ? data.audience.filter((item): item is UserKind => item === "admin" || item === "team" || item === "staff")
+      : [];
 
-      if (typeof data.href === "string" && data.href) {
-        event.href = data.href;
-      }
+    const event: ActivityEvent = {
+      id: String(data.id),
+      kind: data.kind,
+      actorId: String(data.actorId ?? ""),
+      actorName: String(data.actorName),
+      title: String(data.title),
+      body: String(data.body),
+      category: isModuleId(data.category) ? data.category : "medewerkers",
+      sourceId: String(data.sourceId),
+      audience: audience.length > 0 ? audience : ["admin", "team"],
+      createdAt: typeof data.createdAt === "string" ? data.createdAt : new Date().toISOString(),
+    };
 
-      return event;
-    })
-    .filter((entry): entry is ActivityEvent => entry !== null);
+    if (typeof data.href === "string" && data.href) {
+      event.href = data.href;
+    }
+
+    events.push(event);
+  }
+
+  return events;
 }
 
 export function memberJoinedActivity(input: {

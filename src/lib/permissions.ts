@@ -274,3 +274,7 @@ export function canAssignRoles(user: AppUser) {
 export function canManageStaff(user: AppUser) {
   return user.kind === "admin" || user.modules.includes("medewerkers");
 }
+
+export function canClaimExpenses(user: AppUser) {
+  return user.kind === "admin" || user.kind === "team";
+}

@@ -33,9 +33,11 @@ import {
   type ActivityDraft,
   type ActivityEvent,
 } from "@/lib/activity";
-import { canAccessPath, canManageStaff, firstNameOf } from "@/lib/permissions";
+import { canAccessPath, canAssignRoles, canManageStaff, firstNameOf } from "@/lib/permissions";
 import { useUsers } from "@/components/users-provider";
+import { useExpenses } from "@/components/expenses-provider";
 import { needsTshirt } from "@/lib/tshirts";
+import { expenseStatusLabel, formatEuro } from "@/lib/expenses";
 import { formatStaffTasks, isStaffTaskId, usersForTasks, type StaffTaskId } from "@/lib/staff-tasks";
 
 const READ_KEY = "backstage.readNotificationIds";
@@ -100,6 +102,7 @@ const NotificationsContext = createContext<NotificationsContextValue | null>(nul
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { currentUser, users, usersReady, tshirtNotices, refreshDirectory } = useUsers();
+  const { expenses } = useExpenses();
   const [readIds, setReadIds] = useState<string[]>([]);
   const [seenReplyIds, setSeenReplyIds] = useState<string[]>([]);
   const [taskBroadcasts, setTaskBroadcasts] = useState<TaskBroadcast[]>([]);
@@ -486,6 +489,54 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    if (canAssignRoles(currentUser)) {
+      for (const claim of expenses) {
+        if (claim.status !== "submitted") {
+          continue;
+        }
+
+        if (claim.userId === currentUser.id || claim.userEmail === currentUser.email) {
+          continue;
+        }
+
+        extra.push({
+          id: `expense-${claim.id}`,
+          title: `${claim.userName} diende onkosten in`,
+          body: `${claim.title} · ${formatEuro(claim.amountCents)}`,
+          time: "Nieuw",
+          unread: !readIds.includes(`expense-${claim.id}`),
+          href: "/",
+          kind: "general",
+          category: "medewerkers",
+          audience: ["admin"],
+          fromUserId: claim.userId,
+        });
+      }
+    }
+
+    for (const claim of expenses) {
+      if (claim.status === "submitted") {
+        continue;
+      }
+
+      if (claim.userId !== currentUser.id && claim.userEmail !== currentUser.email) {
+        continue;
+      }
+
+      extra.push({
+        id: `expense-status-${claim.id}`,
+        title: claim.status === "paid" ? "Onkosten uitbetaald" : "Onkosten afgewezen",
+        body: `${claim.title} · ${formatEuro(claim.amountCents)} · ${expenseStatusLabel[claim.status]}`,
+        time: expenseStatusLabel[claim.status],
+        unread: !readIds.includes(`expense-status-${claim.id}`),
+        href: "/",
+        kind: "general",
+        category: "medewerkers",
+        audience: [currentUser.kind],
+        fromUserId: claim.userId,
+      });
+    }
+
     const taskNotifications: AppNotification[] = taskBroadcasts
       .filter(
         (item) =>
@@ -586,6 +637,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     addComment,
     addSeenReplyIds,
     currentUser,
+    expenses,
     markRead,
     readIds,
     seenReplyIds,

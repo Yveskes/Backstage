@@ -98,9 +98,9 @@ export function NotificationList({
     <div className="space-y-6">
       {groups.map((group) => (
         <section key={group.category}>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
             {group.label}
-          </h2>
+          </h3>
           <div className="space-y-2">
             {group.items.map((item) => (
               <NotificationCard key={item.id} item={item} compact={compact} onOpen={onOpen} />
