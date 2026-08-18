@@ -124,7 +124,8 @@ export function pathToModule(pathname: string): ModuleId | "public" | "staff-por
     pathname === "/" ||
     pathname === "/profiel" ||
     pathname === "/chat" ||
-    pathname === "/meldingen"
+    pathname === "/meldingen" ||
+    pathname.startsWith("/meldingen/")
   ) {
     return "public";
   }
@@ -160,7 +161,13 @@ export function canAccessPath(user: AppUser, pathname: string) {
   const moduleId = pathToModule(pathname);
 
   if (moduleId === "public") {
-    return user.kind !== "staff" || pathname === "/profiel" || pathname === "/chat" || pathname === "/meldingen";
+    return (
+      user.kind !== "staff" ||
+      pathname === "/profiel" ||
+      pathname === "/chat" ||
+      pathname === "/meldingen" ||
+      pathname.startsWith("/meldingen/")
+    );
   }
 
   if (moduleId === "staff-portal") {

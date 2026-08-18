@@ -1,6 +1,6 @@
 "use client";
 
-import { NotificationCard } from "@/components/notification-card";
+import { NotificationList } from "@/components/notification-card";
 import { useNotifications } from "@/components/notifications-provider";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -96,18 +96,11 @@ export function NotificationsButton({ variant = "light" }: { variant?: "light" |
               </button>
             ) : null}
           </div>
-          <div className="max-h-96 space-y-2 overflow-y-auto p-2">
+          <div className="max-h-96 overflow-y-auto p-2">
             {notifications.length === 0 ? (
               <p className="px-3 py-8 text-center text-sm text-zinc-500">Geen meldingen.</p>
             ) : (
-              notifications.map((item) => (
-                <NotificationCard
-                  key={item.id}
-                  item={item}
-                  compact
-                  onOpen={() => setOpen(false)}
-                />
-              ))
+              <NotificationList items={notifications} compact onOpen={() => setOpen(false)} />
             )}
           </div>
           <div className="border-t border-zinc-200 bg-white px-4 py-2">

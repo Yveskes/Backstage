@@ -1,7 +1,7 @@
 "use client";
 
 import { DashboardModules } from "@/components/dashboard-modules";
-import { NotificationCard } from "@/components/notification-card";
+import { NotificationList } from "@/components/notification-card";
 import { PageHeader } from "@/components/page-header";
 import { TshirtPicker } from "@/components/tshirt-picker";
 import { useNotifications } from "@/components/notifications-provider";
@@ -49,8 +49,8 @@ export function HomeFeed({
         </section>
       ) : null}
 
-      <section className="mb-8 space-y-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+      <section className="mb-8">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-500">
           Meldingen
         </h2>
         {notifications.length === 0 ? (
@@ -58,7 +58,7 @@ export function HomeFeed({
             Geen meldingen.
           </p>
         ) : (
-          notifications.map((item) => <NotificationCard key={item.id} item={item} />)
+          <NotificationList items={notifications} />
         )}
       </section>
 

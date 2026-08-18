@@ -1,6 +1,6 @@
 "use client";
 
-import { NotificationCard } from "@/components/notification-card";
+import { NotificationList } from "@/components/notification-card";
 import { PageHeader } from "@/components/page-header";
 import { useNotifications } from "@/components/notifications-provider";
 
@@ -25,15 +25,13 @@ export default function MeldingenPage() {
         }
       />
 
-      <section className="space-y-2">
-        {notifications.length === 0 ? (
-          <p className="rounded-2xl border border-zinc-200 bg-white px-5 py-8 text-center text-sm text-zinc-500">
-            Geen meldingen.
-          </p>
-        ) : (
-          notifications.map((item) => <NotificationCard key={item.id} item={item} />)
-        )}
-      </section>
+      {notifications.length === 0 ? (
+        <p className="rounded-2xl border border-zinc-200 bg-white px-5 py-8 text-center text-sm text-zinc-500">
+          Geen meldingen.
+        </p>
+      ) : (
+        <NotificationList items={notifications} />
+      )}
     </>
   );
 }

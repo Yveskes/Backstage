@@ -148,6 +148,14 @@ export async function createInvite(
       status: "pending",
     });
 
+    if (kind === "team") {
+      return {
+        success: "Teamlink is klaar. Kopieer die en deel hem zelf. 7 dagen geldig.",
+        inviteUrl,
+        emailSent: false,
+      };
+    }
+
     const { error } = await admin.auth.admin.inviteUserByEmail(email, {
       data: userMetadata,
       redirectTo: `${getSiteUrl()}/auth/callback?next=/wachtwoord-instellen`,
@@ -169,8 +177,7 @@ export async function createInvite(
   }
 
   return {
-    success:
-      "Uitnodigingslink aangemaakt (7 dagen geldig). Zet SUPABASE_SERVICE_ROLE_KEY om automatisch e-mail te sturen.",
+    success: "Uitnodigingslink aangemaakt (7 dagen geldig). Deel die zelf.",
     inviteUrl,
     emailSent: false,
   };

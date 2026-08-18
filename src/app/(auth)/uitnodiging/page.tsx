@@ -22,7 +22,7 @@ function InviteForm() {
     <form action={action} className="rounded-2xl border border-zinc-200 bg-white p-6">
       <h2 className="text-lg font-semibold text-zinc-900">Uitnodiging accepteren</h2>
       <p className="mt-1 text-sm text-zinc-500">
-        Kies een wachtwoord. Je account start als medewerker. De link is 7 dagen geldig.
+        Kies een wachtwoord. De link is 7 dagen geldig.
       </p>
       <input type="hidden" name="token" value={token} />
 

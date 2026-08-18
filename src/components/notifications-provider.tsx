@@ -9,7 +9,18 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { mockNotifications, type AppNotification } from "@/lib/notifications";
+import {
+  defaultThreads,
+  emptyThread,
+  mockNotifications,
+  sanitizeThreads,
+  toggleReactionList,
+  setUserReaction,
+  type AppNotification,
+  type NotificationComment,
+  type NotificationThread,
+  type NotificationThreads,
+} from "@/lib/notifications";
 import { canAccessPath, canManageStaff } from "@/lib/permissions";
 import { useUsers } from "@/components/users-provider";
 import { needsTshirt } from "@/lib/tshirts";
@@ -17,6 +28,7 @@ import { formatStaffTasks, isStaffTaskId, usersForTasks, type StaffTaskId } from
 
 const READ_KEY = "backstage.readNotificationIds";
 const TASK_MESSAGES_KEY = "backstage.taskMessages";
+const THREADS_KEY = "backstage.notificationThreads";
 
 export type TaskBroadcast = {
   id: string;
@@ -59,6 +71,10 @@ type NotificationsContextValue = {
   markRead: (id: string) => void;
   markAllRead: () => void;
   sendTaskBroadcast: (input: { taskIds: StaffTaskId[]; title: string; body: string }) => number;
+  threadFor: (notificationId: string) => NotificationThread;
+  addComment: (notificationId: string, body: string) => void;
+  toggleReaction: (notificationId: string, emoji: string) => void;
+  toggleCommentReaction: (notificationId: string, commentId: string, emoji: string) => void;
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
@@ -67,6 +83,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { currentUser, users, tshirtNotices } = useUsers();
   const [readIds, setReadIds] = useState<string[]>([]);
   const [taskBroadcasts, setTaskBroadcasts] = useState<TaskBroadcast[]>([]);
+  const [threads, setThreads] = useState<NotificationThreads>(defaultThreads);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -90,6 +107,13 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       setTaskBroadcasts([]);
     }
 
+    try {
+      const rawThreads = window.localStorage.getItem(THREADS_KEY);
+      setThreads(rawThreads ? sanitizeThreads(JSON.parse(rawThreads)) : defaultThreads);
+    } catch {
+      setThreads(defaultThreads);
+    }
+
     setReady(true);
   }, []);
 
@@ -100,11 +124,83 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
     window.localStorage.setItem(READ_KEY, JSON.stringify(readIds));
     window.localStorage.setItem(TASK_MESSAGES_KEY, JSON.stringify(taskBroadcasts));
-  }, [readIds, ready, taskBroadcasts]);
+    window.localStorage.setItem(THREADS_KEY, JSON.stringify(threads));
+  }, [readIds, ready, taskBroadcasts, threads]);
 
   const markRead = useCallback((id: string) => {
     setReadIds((current) => (current.includes(id) ? current : [...current, id]));
   }, []);
+
+  const threadFor = useCallback(
+    (notificationId: string) => threads[notificationId] ?? emptyThread(),
+    [threads],
+  );
+
+  const addComment = useCallback(
+    (notificationId: string, body: string) => {
+      const text = body.trim();
+      if (!text) {
+        return;
+      }
+
+      const comment: NotificationComment = {
+        id: `comment-${Date.now()}`,
+        userId: currentUser.id,
+        userName: currentUser.fullName,
+        body: text,
+        time: "Zojuist",
+        reactions: [],
+      };
+
+      setThreads((current) => {
+        const thread = current[notificationId] ?? emptyThread();
+        return {
+          ...current,
+          [notificationId]: {
+            ...thread,
+            comments: [...thread.comments, comment],
+          },
+        };
+      });
+    },
+    [currentUser],
+  );
+
+  const toggleReaction = useCallback(
+    (notificationId: string, emoji: string) => {
+      setThreads((current) => {
+        const thread = current[notificationId] ?? emptyThread();
+        return {
+          ...current,
+          [notificationId]: {
+            ...thread,
+            reactions: setUserReaction(thread.reactions, emoji, currentUser.id),
+          },
+        };
+      });
+    },
+    [currentUser.id],
+  );
+
+  const toggleCommentReaction = useCallback(
+    (notificationId: string, commentId: string, emoji: string) => {
+      setThreads((current) => {
+        const thread = current[notificationId] ?? emptyThread();
+        return {
+          ...current,
+          [notificationId]: {
+            ...thread,
+            comments: thread.comments.map((comment) =>
+              comment.id === commentId
+                ? { ...comment, reactions: toggleReactionList(comment.reactions, emoji, currentUser.id) }
+                : comment,
+            ),
+          },
+        };
+      });
+    },
+    [currentUser.id],
+  );
 
   const sendTaskBroadcast = useCallback(
     (input: { taskIds: StaffTaskId[]; title: string; body: string }) => {
@@ -150,6 +246,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         unread: true,
         href: "/medewerkers/tshirts",
         kind: "tshirt",
+        category: "medewerkers",
+        important: true,
         audience: ["admin", "team"],
       });
     }
@@ -164,6 +262,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           unread: !readIds.includes(notice.id),
           href: "/medewerkers/tshirts",
           kind: "tshirt",
+          category: "medewerkers",
           audience: ["admin", "team"],
         });
       }
@@ -185,6 +284,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           time: item.time,
           unread: isRecipient && !readIds.includes(item.id),
           kind: "task" as const,
+          category: "medewerkers" as const,
           recipientIds: item.recipientIds,
           fromUserId: item.fromUserId,
           taskIds: item.taskIds,
@@ -223,8 +323,25 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         setReadIds(notifications.map((item) => item.id));
       },
       sendTaskBroadcast,
+      threadFor,
+      addComment,
+      toggleReaction,
+      toggleCommentReaction,
     };
-  }, [currentUser, markRead, readIds, sendTaskBroadcast, taskBroadcasts, tshirtNotices, users]);
+  }, [
+    addComment,
+    currentUser,
+    markRead,
+    readIds,
+    sendTaskBroadcast,
+    taskBroadcasts,
+    threadFor,
+    threads,
+    toggleCommentReaction,
+    toggleReaction,
+    tshirtNotices,
+    users,
+  ]);
 
   return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;
 }
