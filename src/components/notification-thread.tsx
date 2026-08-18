@@ -40,6 +40,40 @@ function ReactionPicker({ onPick }: { onPick: (emoji: string) => void }) {
   );
 }
 
+function nameForUser(userId: string, users: { id: string; fullName: string }[]) {
+  return users.find((user) => user.id === userId)?.fullName ?? "Iemand";
+}
+
+function WhoReactedTooltip({ reactions }: { reactions: NotificationReaction[] }) {
+  const { users } = useUsers();
+  const lines = reactions
+    .filter((reaction) => reaction.userIds.length > 0)
+    .map((reaction) => ({
+      emoji: reaction.emoji,
+      names: reaction.userIds.map((id) => nameForUser(id, users)),
+    }));
+
+  if (lines.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      role="tooltip"
+      className="pointer-events-none invisible absolute bottom-full left-0 z-30 mb-1.5 w-max max-w-[16rem] rounded border border-zinc-200 bg-white px-2.5 py-2 opacity-0 shadow-md group-hover/who:visible group-hover/who:opacity-100 group-focus-within/who:visible group-focus-within/who:opacity-100"
+    >
+      <ul className="space-y-1">
+        {lines.map((line) => (
+          <li key={line.emoji} className="flex items-start gap-1.5 text-xs leading-4 text-zinc-800">
+            <span>{line.emoji}</span>
+            <span>{line.names.join(", ")}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ReactionSummary({ reactions }: { reactions: NotificationReaction[] }) {
   const shown = reactions.slice(0, 3);
 
@@ -148,7 +182,7 @@ export function NotificationActions({
         </div>
       ) : null}
       <div className="flex items-center gap-1">
-        <div className="flex items-center">
+        <div className="group/who relative flex items-center">
           <button
             type="button"
             onClick={onLikeClick}
@@ -170,6 +204,7 @@ export function NotificationActions({
             <span className="tabular-nums text-zinc-600">{likeCount}</span>
           </button>
           <ReactionSummary reactions={thread.reactions} />
+          <WhoReactedTooltip reactions={thread.reactions} />
         </div>
         {onComment ? (
           <button type="button" onClick={onComment} className={commentButtonClass}>
@@ -223,17 +258,20 @@ function CommentCard({
       </div>
       <p className="mt-0.5 whitespace-pre-wrap text-sm leading-5 text-zinc-700">{comment.body}</p>
       <div className="mt-1 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onToggle("👍")}
-          className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs hover:bg-zinc-200/80 ${
-            liked ? "font-medium text-zinc-900" : "text-zinc-500"
-          }`}
-        >
-          <ThumbIcon className="h-3.5 w-3.5" filled={liked} />
-          <span className="tabular-nums">{comment.reactions.reduce((sum, entry) => sum + entry.userIds.length, 0)}</span>
-        </button>
-        <ReactionSummary reactions={comment.reactions} />
+        <div className="group/who relative flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onToggle("👍")}
+            className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs hover:bg-zinc-200/80 ${
+              liked ? "font-medium text-zinc-900" : "text-zinc-500"
+            }`}
+          >
+            <ThumbIcon className="h-3.5 w-3.5" filled={liked} />
+            <span className="tabular-nums">{comment.reactions.reduce((sum, entry) => sum + entry.userIds.length, 0)}</span>
+          </button>
+          <ReactionSummary reactions={comment.reactions} />
+          <WhoReactedTooltip reactions={comment.reactions} />
+        </div>
       </div>
     </article>
   );
