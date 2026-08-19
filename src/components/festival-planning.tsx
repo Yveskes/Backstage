@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon, PencilIcon, StarIcon } from "@/components/icons";
+import { CheckIcon, GripIcon, PencilIcon, StarIcon } from "@/components/icons";
 import { useRef, useState, type DragEvent, type FormEvent } from "react";
 import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
@@ -18,11 +18,25 @@ import {
   type StaffTaskId,
 } from "@/lib/staff-tasks";
 
-type DragPayload = {
+type PersonDragPayload = {
+  kind: "person";
   userId: string;
   fromTask: StaffTaskId;
   fromDay: PlanningDayId;
 };
+
+type PostDragPayload = {
+  kind: "post";
+  postId: string;
+  fromDay: PlanningDayId;
+};
+
+type UnassignedDragPayload = {
+  kind: "unassigned";
+  userId: string;
+};
+
+type DragPayload = PersonDragPayload | PostDragPayload | UnassignedDragPayload;
 
 function byName(a: AppUser, b: AppUser) {
   return a.fullName.localeCompare(b.fullName, "nl");
@@ -56,18 +70,32 @@ function parseNeed(raw: string) {
 }
 
 export function FestivalPlanning() {
-  const { users, updateUser, currentUser } = useUsers();
-  const { planning, posts, setNeed, addPost, updatePost } = useStaffPlanning();
+  const { planning, posts, setNeed, updatePost, movePost, deletePost } = useStaffPlanning();
+  const { users, updateUser, currentUser, removeTaskFromAll } = useUsers();
   const canManage = canManageStaff(currentUser);
   const [overKey, setOverKey] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const dragging = useRef(false);
+  const dragKind = useRef<"person" | "post" | "unassigned" | null>(null);
+  const postDrag = useRef<PostDragPayload | null>(null);
+
+  function removePost(post: FestivalPost) {
+    const confirmed = window.confirm(
+      `${post.label} verwijderen? Mensen op deze post raken die toewijzing kwijt.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    deletePost(post.id);
+    removeTaskFromAll(post.id);
+    setEditingId((current) => (current === post.id ? null : current));
+  }
 
   const unassigned = users
     .filter((user) => user.tasks.some((task) => isFestivalTask(task)) && !user.days)
     .sort(byName);
 
-  function movePerson(payload: DragPayload, toTask: StaffTaskId, toDay: PlanningDayId) {
+  function movePerson(payload: PersonDragPayload, toTask: StaffTaskId, toDay: PlanningDayId) {
     if (payload.fromTask === toTask && payload.fromDay === toDay) {
       return;
     }
@@ -96,31 +124,105 @@ export function FestivalPlanning() {
     });
   }
 
+  function readPayload(event: DragEvent): (DragPayload & { unassigned?: boolean; userId?: string }) | null {
+    if (dragKind.current === "post" && postDrag.current) {
+      return postDrag.current;
+    }
+
+    try {
+      const raw =
+        event.dataTransfer.getData("application/json") || event.dataTransfer.getData("text/plain");
+      if (!raw || !raw.startsWith("{")) {
+        return null;
+      }
+
+      return JSON.parse(raw) as DragPayload & { unassigned?: boolean; userId?: string };
+    } catch {
+      return null;
+    }
+  }
+
   function onDropCell(event: DragEvent, toTask: StaffTaskId, toDay: PlanningDayId) {
+    event.preventDefault();
+    event.stopPropagation();
+    setOverKey(null);
+
+    const payload = readPayload(event);
+    if (!payload) {
+      return;
+    }
+
+    if (payload.kind === "post" && payload.postId) {
+      if (payload.fromDay !== toDay) {
+        return;
+      }
+
+      const dayPosts = postsForDay(posts, toDay);
+      const fromIndex = dayPosts.findIndex((post) => post.id === payload.postId);
+      const toIndex = dayPosts.findIndex((post) => post.id === toTask);
+      if (fromIndex < 0 || toIndex < 0) {
+        return;
+      }
+
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      const after = event.clientY > rect.top + rect.height / 2;
+      let insertIndex = after ? toIndex + 1 : toIndex;
+      if (fromIndex < insertIndex) {
+        insertIndex -= 1;
+      }
+
+      const without = dayPosts.filter((post) => post.id !== payload.postId);
+      movePost(payload.postId, payload.fromDay, toDay, without[insertIndex]?.id ?? null);
+      return;
+    }
+
+    if (payload.kind === "unassigned" || payload.unassigned) {
+      if (payload.userId) {
+        assignUnassigned(payload.userId, toTask, toDay);
+      }
+      return;
+    }
+
+    if (!payload.userId || payload.kind === "post") {
+      return;
+    }
+
+    movePerson(payload, toTask, toDay);
+  }
+
+  function onDropDay(event: DragEvent, toDay: PlanningDayId) {
     event.preventDefault();
     setOverKey(null);
 
-    try {
-      const raw = event.dataTransfer.getData("application/json");
-      const payload = JSON.parse(raw) as DragPayload & { unassigned?: boolean };
-      if (!payload.userId) {
-        return;
-      }
-
-      if (payload.unassigned) {
-        assignUnassigned(payload.userId, toTask, toDay);
-        return;
-      }
-
-      movePerson(payload, toTask, toDay);
-    } catch {
+    const payload = readPayload(event);
+    if (payload?.kind !== "post" || payload.fromDay !== toDay) {
       return;
     }
+
+    movePost(payload.postId, payload.fromDay, toDay, null);
+  }
+
+  function startPostDrag(event: DragEvent, postId: string, fromDay: PlanningDayId) {
+    const target = event.target as HTMLElement;
+    if (target.closest("input, textarea")) {
+      event.preventDefault();
+      return;
+    }
+
+    if (target.closest("button, [data-person-drag]")) {
+      return;
+    }
+
+    const payload: PostDragPayload = { kind: "post", postId, fromDay };
+    dragKind.current = "post";
+    postDrag.current = payload;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", JSON.stringify(payload));
+    event.dataTransfer.setData("application/json", JSON.stringify(payload));
   }
 
   return (
     <div className="space-y-4">
-      {canManage ? <NewPostForm onAdd={addPost} /> : null}
       {unassigned.length > 0 ? (
         <section className="rounded border border-red-200 bg-red-50 p-4">
           <h2 className="text-sm font-semibold text-red-900">Nog geen festivaldag</h2>
@@ -131,11 +233,11 @@ export function FestivalPlanning() {
                   type="button"
                   draggable
                   onDragStart={(event) => {
-                    dragging.current = true;
+                    dragKind.current = "unassigned";
                     event.dataTransfer.effectAllowed = "move";
                     event.dataTransfer.setData(
                       "application/json",
-                      JSON.stringify({ userId: user.id, unassigned: true }),
+                      JSON.stringify({ kind: "unassigned", userId: user.id } satisfies UnassignedDragPayload),
                     );
                   }}
                   className="w-full cursor-grab rounded bg-white px-3 py-1.5 text-left text-sm text-red-900 active:cursor-grabbing"
@@ -152,7 +254,23 @@ export function FestivalPlanning() {
         {planningDayOptions.map((day) => (
           <section key={day.id}>
             <h2 className="text-base font-semibold text-zinc-900">{day.label}</h2>
-            <div className="mt-3 space-y-3">
+            <div
+              className={`mt-3 min-h-16 space-y-3 rounded-xl p-1 ${
+                overKey === `day:${day.id}` ? "bg-zinc-100" : ""
+              }`}
+              onDragOver={(event) => {
+                if (dragKind.current !== "post" || postDrag.current?.fromDay !== day.id) {
+                  return;
+                }
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                setOverKey(`day:${day.id}`);
+              }}
+              onDragLeave={() => {
+                setOverKey((current) => (current === `day:${day.id}` ? null : current));
+              }}
+              onDrop={(event) => onDropDay(event, day.id)}
+            >
               {postsForDay(posts, day.id).map((task) => {
                 const people = peopleForCell(users, task.id, day.id);
                 const responsibleId = planning.responsible[task.id];
@@ -168,8 +286,19 @@ export function FestivalPlanning() {
                 return (
                   <div
                     key={task.id}
+                    draggable={canManage}
+                    onDragStart={(event) => startPostDrag(event, task.id, day.id)}
+                    onDragEnd={() => {
+                      dragKind.current = null;
+                      postDrag.current = null;
+                      setOverKey(null);
+                    }}
                     onDragOver={(event) => {
+                      if (dragKind.current === "post" && postDrag.current?.fromDay !== day.id) {
+                        return;
+                      }
                       event.preventDefault();
+                      event.stopPropagation();
                       event.dataTransfer.dropEffect = "move";
                       setOverKey(dropKey);
                     }}
@@ -178,6 +307,8 @@ export function FestivalPlanning() {
                     }}
                     onDrop={(event) => onDropCell(event, task.id, day.id)}
                     className={`relative rounded border px-3 py-3 ${
+                      canManage ? "cursor-grab active:cursor-grabbing" : ""
+                    } ${
                       overKey === dropKey
                         ? "border-zinc-900 bg-zinc-100"
                         : underfilled
@@ -198,9 +329,32 @@ export function FestivalPlanning() {
                     ) : null}
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-1">
-                        <p className={`truncate text-sm font-medium ${underfilled ? "text-red-900" : "text-zinc-900"}`}>
-                          {task.label}
-                        </p>
+                        {canManage ? (
+                          <GripIcon className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+                        ) : null}
+                        {canManage ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setEditingId((current) => (current === task.id ? null : task.id));
+                            }}
+                            className={`truncate text-left text-sm font-medium hover:underline ${
+                              underfilled ? "text-red-900" : "text-zinc-900"
+                            }`}
+                          >
+                            {task.label}
+                          </button>
+                        ) : (
+                          <p
+                            className={`truncate text-sm font-medium ${
+                              underfilled ? "text-red-900" : "text-zinc-900"
+                            }`}
+                          >
+                            {task.label}
+                          </p>
+                        )}
                         {canManage ? (
                           <button
                             type="button"
@@ -242,6 +396,7 @@ export function FestivalPlanning() {
                           }
                         }}
                         onCancel={() => setEditingId(null)}
+                        onDelete={() => removePost(task)}
                       />
                     ) : null}
 
@@ -254,24 +409,30 @@ export function FestivalPlanning() {
                             <li key={user.id}>
                               <button
                                 type="button"
+                                data-person-drag
                                 draggable
                                 onDragStart={(event) => {
-                                  dragging.current = true;
+                                  event.stopPropagation();
+                                  dragKind.current = "person";
+                                  postDrag.current = null;
                                   event.dataTransfer.effectAllowed = "move";
+                                  event.dataTransfer.setData(
+                                    "text/plain",
+                                    user.id,
+                                  );
                                   event.dataTransfer.setData(
                                     "application/json",
                                     JSON.stringify({
+                                      kind: "person",
                                       userId: user.id,
                                       fromTask: task.id,
                                       fromDay: day.id,
-                                    } satisfies DragPayload),
+                                    } satisfies PersonDragPayload),
                                   );
                                 }}
                                 onDragEnd={() => {
+                                  dragKind.current = null;
                                   setOverKey(null);
-                                  window.setTimeout(() => {
-                                    dragging.current = false;
-                                  }, 0);
                                 }}
                                 className="flex w-full cursor-grab items-center justify-between gap-2 rounded bg-white px-2 py-1.5 text-left text-sm text-zinc-800 active:cursor-grabbing"
                                 title={
@@ -326,7 +487,7 @@ function DayChoice({
   );
 }
 
-function NewPostForm({
+export function NewPostForm({
   onAdd,
 }: {
   onAdd: (input: { label: string; days: StaffDayId }) => FestivalPost | { error: string };
@@ -355,7 +516,7 @@ function NewPostForm({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded-lg border border-dashed border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50"
+        className="rounded-lg border border-dashed border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50"
       >
         Nieuwe post
       </button>
@@ -363,7 +524,7 @@ function NewPostForm({
   }
 
   return (
-    <form onSubmit={submit} className="rounded-xl border border-zinc-200 bg-white p-4">
+    <form onSubmit={submit} className="basis-full rounded-xl border border-zinc-200 bg-white p-4">
       <p className="text-sm font-medium text-zinc-900">Nieuwe post</p>
       <p className="mt-1 text-xs text-zinc-500">Naam plus of de post op vrijdag, zaterdag of beide dagen staat.</p>
       <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -408,10 +569,12 @@ function PostEditor({
   post,
   onSave,
   onCancel,
+  onDelete,
 }: {
   post: FestivalPost;
   onSave: (patch: { label: string; days: StaffDayId }) => void;
   onCancel: () => void;
+  onDelete: () => void;
 }) {
   const [label, setLabel] = useState(post.label);
   const [days, setDays] = useState<StaffDayId>(post.days);
@@ -432,12 +595,17 @@ function PostEditor({
       <div className="mt-2">
         <DayChoice value={days} onChange={setDays} />
       </div>
-      <div className="mt-2 flex gap-2">
-        <button type="submit" className="rounded bg-zinc-900 px-2.5 py-1 text-xs font-medium text-white">
-          Opslaan
-        </button>
-        <button type="button" onClick={onCancel} className="rounded px-2.5 py-1 text-xs text-zinc-600">
-          Annuleren
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <div className="flex gap-2">
+          <button type="submit" className="rounded bg-zinc-900 px-2.5 py-1 text-xs font-medium text-white">
+            Opslaan
+          </button>
+          <button type="button" onClick={onCancel} className="rounded px-2.5 py-1 text-xs text-zinc-600">
+            Annuleren
+          </button>
+        </div>
+        <button type="button" onClick={onDelete} className="rounded px-2.5 py-1 text-xs text-red-700 hover:bg-red-50">
+          Verwijderen
         </button>
       </div>
     </form>

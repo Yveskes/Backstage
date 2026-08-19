@@ -260,6 +260,14 @@ export function formatFill(needed: number | null, assigned: number) {
   return `${assigned} / ${needed}`;
 }
 
+export function removeTaskFromPlanning(planning: StaffPlanning, taskId: StaffTaskId): StaffPlanning {
+  const needed = { ...planning.needed };
+  const responsible = { ...planning.responsible };
+  delete needed[taskId];
+  delete responsible[taskId];
+  return { ...planning, needed, responsible };
+}
+
 export function ensureTaskNeed(planning: StaffPlanning, taskId: StaffTaskId): StaffPlanning {
   if (planning.needed[taskId]) {
     return planning;

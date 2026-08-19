@@ -44,6 +44,7 @@ type UsersContextValue = {
   addUser: (user: AppUser) => void;
   refreshDirectory: () => Promise<void>;
   removeUser: (id: string) => Promise<{ error?: string }>;
+  removeTaskFromAll: (taskId: string) => void;
   confirmTshirt: (id: string, size: TshirtSize) => void;
 };
 
@@ -488,6 +489,15 @@ export function UsersProvider({ children }: { children: ReactNode }) {
         });
       },
       refreshDirectory,
+      removeTaskFromAll(taskId) {
+        setUsers((current) =>
+          current.map((user) =>
+            user.tasks.includes(taskId)
+              ? { ...user, tasks: user.tasks.filter((task) => task !== taskId) }
+              : user,
+          ),
+        );
+      },
       async removeUser(id) {
         const actor = users.find((user) => user.id === sessionUserId);
         const target = users.find((user) => user.id === id);

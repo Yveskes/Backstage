@@ -1,3 +1,4 @@
+import { ExpenseClaims } from "@/components/expense-claims";
 import { PageHeader } from "@/components/page-header";
 import { ProfileForm } from "@/components/profile-form";
 
@@ -6,9 +7,12 @@ export default function ProfielPage() {
     <>
       <PageHeader
         title="Mijn profiel"
-        description="Pas je gegevens, profielfoto en wachtwoord aan."
+        description="Pas je gegevens aan en dien onkosten in."
       />
-      <ProfileForm />
+      <div className="space-y-6">
+        <ProfileForm />
+        <ExpenseClaims />
+      </div>
     </>
   );
 }

@@ -15,6 +15,7 @@ import {
   clearResponsibleIf,
   emptyPlanning,
   ensureTaskNeed,
+  removeTaskFromPlanning,
   sanitizePlanning,
   setNeededCount,
   toggleBuildHalf,
@@ -26,10 +27,12 @@ import {
   sanitizeFestivalPosts,
   setFestivalPostCatalog,
   uniquePostId,
+  moveFestivalPost,
   type FestivalPost,
   type StaffDayId,
   type BuildTaskId,
   type HalfDayId,
+  type PlanningDayId,
   type StaffTaskId,
 } from "@/lib/staff-tasks";
 
@@ -48,6 +51,8 @@ type StaffPlanningContextValue = {
   clearAttendance: (userId: string, kind?: BuildTaskId, day?: string) => void;
   addPost: (input: { label: string; days: StaffDayId }) => FestivalPost | { error: string };
   updatePost: (id: string, patch: { label: string; days: StaffDayId }) => { error?: string };
+  movePost: (postId: string, fromDay: PlanningDayId, toDay: PlanningDayId, beforeId: string | null) => void;
+  deletePost: (id: string) => void;
 };
 
 const StaffPlanningContext = createContext<StaffPlanningContextValue | null>(null);
@@ -145,6 +150,18 @@ export function StaffPlanningProvider({ children }: { children: ReactNode }) {
     return {};
   }, []);
 
+  const movePost = useCallback(
+    (postId: string, fromDay: PlanningDayId, toDay: PlanningDayId, beforeId: string | null) => {
+      setPosts((current) => moveFestivalPost(current, postId, fromDay, toDay, beforeId));
+    },
+    [],
+  );
+
+  const deletePost = useCallback((id: string) => {
+    setPosts((current) => current.filter((post) => post.id !== id));
+    setPlanning((current) => removeTaskFromPlanning(current, id));
+  }, []);
+
   const value = useMemo(
     () => ({
       planning,
@@ -157,8 +174,10 @@ export function StaffPlanningProvider({ children }: { children: ReactNode }) {
       clearAttendance,
       addPost,
       updatePost,
+      movePost,
+      deletePost,
     }),
-    [addPost, clearAttendance, clearLeadIf, planning, posts, ready, setNeed, toggleHalf, toggleLead, updatePost],
+    [addPost, clearAttendance, clearLeadIf, deletePost, movePost, planning, posts, ready, setNeed, toggleHalf, toggleLead, updatePost],
   );
 
   return <StaffPlanningContext.Provider value={value}>{children}</StaffPlanningContext.Provider>;

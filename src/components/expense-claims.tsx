@@ -117,7 +117,7 @@ export function ExpenseClaims() {
   }
 
   return (
-    <section className="mb-8 rounded-2xl border border-zinc-200 bg-white p-5">
+    <section className="rounded-2xl border border-zinc-200 bg-white p-5">
       <h2 className="text-sm font-semibold text-zinc-900">Onkosten indienen</h2>
       <p className="mt-1 text-sm text-zinc-500">
         Kocht je iets voor Zeverrock, of ging er materiaal verloren? Dien het hier in, bijvoorbeeld inkt voor de

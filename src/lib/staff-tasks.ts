@@ -18,6 +18,7 @@ export type FestivalPost = {
   id: StaffTaskId;
   label: string;
   days: StaffDayId;
+  order?: Partial<Record<"friday" | "saturday", number>>;
 };
 
 export const defaultFestivalPosts: FestivalPost[] = [
@@ -63,7 +64,72 @@ export function staffTaskOptionsFor(posts: FestivalPost[]) {
 }
 
 export function postsForDay(posts: FestivalPost[], day: PlanningDayId) {
-  return posts.filter((post) => post.days === "both" || post.days === day);
+  const indexById = new Map(posts.map((post, index) => [post.id, index]));
+  return posts
+    .filter((post) => post.days === "both" || post.days === day)
+    .sort((a, b) => {
+      const aOrder = a.order?.[day];
+      const bOrder = b.order?.[day];
+      if (aOrder != null && bOrder != null && aOrder !== bOrder) {
+        return aOrder - bOrder;
+      }
+      if (aOrder != null && bOrder == null) {
+        return -1;
+      }
+      if (aOrder == null && bOrder != null) {
+        return 1;
+      }
+      return (indexById.get(a.id) ?? 0) - (indexById.get(b.id) ?? 0);
+    });
+}
+
+function sanitizePostOrder(raw: unknown): FestivalPost["order"] {
+  if (!raw || typeof raw !== "object") {
+    return undefined;
+  }
+
+  const data = raw as Record<string, unknown>;
+  const order: NonNullable<FestivalPost["order"]> = {};
+  for (const day of ["friday", "saturday"] as const) {
+    const value = Number(data[day]);
+    if (Number.isFinite(value)) {
+      order[day] = value;
+    }
+  }
+
+  return Object.keys(order).length > 0 ? order : undefined;
+}
+
+export function moveFestivalPost(
+  posts: FestivalPost[],
+  postId: string,
+  fromDay: PlanningDayId,
+  toDay: PlanningDayId,
+  beforeId: string | null,
+): FestivalPost[] {
+  if (fromDay !== toDay) {
+    return posts;
+  }
+
+  const moving = posts.find((post) => post.id === postId);
+  if (!moving) {
+    return posts;
+  }
+
+  const visible = postsForDay(posts, toDay).filter((post) => post.id !== postId);
+  const insertAt = beforeId ? visible.findIndex((post) => post.id === beforeId) : -1;
+  const index = beforeId && insertAt >= 0 ? insertAt : visible.length;
+  visible.splice(index, 0, moving);
+  const orderOnDay = new Map(visible.map((post, order) => [post.id, order]));
+
+  return posts.map((post) => {
+    const order = orderOnDay.get(post.id);
+    if (order == null) {
+      return post;
+    }
+
+    return { ...post, order: { ...post.order, [toDay]: order } };
+  });
 }
 
 export function slugifyPostLabel(label: string) {
@@ -93,36 +159,31 @@ export function uniquePostId(label: string, existing: FestivalPost[]) {
 }
 
 export function sanitizeFestivalPosts(raw: unknown): FestivalPost[] {
-  const stored = Array.isArray(raw)
-    ? raw.flatMap((entry) => {
-        if (!entry || typeof entry !== "object") {
-          return [];
-        }
-
-        const data = entry as Partial<FestivalPost>;
-        const id = String(data.id ?? "").trim();
-        const label = String(data.label ?? "").trim();
-        if (!id || !label || isBuildTask(id) || !isStaffTaskId(id)) {
-          return [];
-        }
-
-        return [
-          {
-            id,
-            label,
-            days: isStaffDayId(data.days) ? data.days : "both",
-          },
-        ];
-      })
-    : [];
-
-  const byId = new Map(defaultFestivalPosts.map((post) => [post.id, { ...post }]));
-  for (const post of stored) {
-    byId.set(post.id, post);
+  if (!Array.isArray(raw)) {
+    return defaultFestivalPosts.map((post) => ({ ...post }));
   }
 
-  const extras = stored.filter((post) => !defaultFestivalPosts.some((entry) => entry.id === post.id));
-  return [...defaultFestivalPosts.map((post) => byId.get(post.id) ?? post), ...extras];
+  return raw.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return [];
+    }
+
+    const data = entry as Partial<FestivalPost>;
+    const id = String(data.id ?? "").trim();
+    const label = String(data.label ?? "").trim();
+    if (!id || !label || isBuildTask(id) || !isStaffTaskId(id)) {
+      return [];
+    }
+
+    return [
+      {
+        id,
+        label,
+        days: isStaffDayId(data.days) ? data.days : "both",
+        order: sanitizePostOrder(data.order),
+      },
+    ];
+  });
 }
 
 export function labelForTask(taskId: StaffTaskId, posts: FestivalPost[] = festivalPostCatalog) {

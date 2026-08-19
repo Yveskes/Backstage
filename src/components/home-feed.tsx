@@ -1,12 +1,13 @@
 "use client";
 
-import { ExpenseClaims } from "@/components/expense-claims";
 import { NotificationList } from "@/components/notification-card";
 import { PageHeader } from "@/components/page-header";
 import { TshirtPicker } from "@/components/tshirt-picker";
 import { useNotifications } from "@/components/notifications-provider";
+import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
-import { firstNameOf } from "@/lib/permissions";
+import { rewardForUser } from "@/lib/build-rewards";
+import { canClaimExpenses, firstNameOf } from "@/lib/permissions";
 import { formatStaffTasks, formatUserSchedule } from "@/lib/staff-tasks";
 
 export function HomeFeed() {
@@ -26,7 +27,7 @@ export function HomeFeed() {
 
       <TshirtPicker />
 
-      <ExpenseClaims />
+      <TeamPayoutLine />
 
       {shiftLabel ? (
         <section className="mb-6 rounded-2xl border border-zinc-200 bg-white px-5 py-4">
@@ -46,5 +47,28 @@ export function HomeFeed() {
         )}
       </section>
     </>
+  );
+}
+
+function TeamPayoutLine() {
+  const { currentUser } = useUsers();
+  const { planning } = useStaffPlanning();
+
+  if (!canClaimExpenses(currentUser)) {
+    return null;
+  }
+
+  const reward = rewardForUser(planning, currentUser);
+  const tokens = `${reward.tokens} drankjeton${reward.tokens === 1 ? "" : "s"}`;
+  const combi = reward.combiTicket ? "combiticket" : "nog geen combiticket";
+
+  return (
+    <p className="mb-6 text-sm text-zinc-600">
+      <span className="font-medium text-zinc-800">Te ontvangen</span>
+      <span className="mx-2 text-zinc-300">·</span>
+      {tokens}
+      <span className="mx-2 text-zinc-300">·</span>
+      {combi}
+    </p>
   );
 }
