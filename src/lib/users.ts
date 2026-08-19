@@ -1,6 +1,13 @@
 import type { AppUser } from "@/lib/permissions";
 
-export const defaultUsers: AppUser[] = [
+function withSaturdaySize(user: Omit<AppUser, "tshirtSizeSaturday">): AppUser {
+  return {
+    ...user,
+    tshirtSizeSaturday: user.days === "both" && user.tshirtConfirmed ? user.tshirtSize : null,
+  };
+}
+
+const seedUsers: Omit<AppUser, "tshirtSizeSaturday">[] = [
   {
     id: "yves",
     firstName: "Yves",
@@ -326,3 +333,5 @@ export const defaultUsers: AppUser[] = [
     active: true,
   },
 ];
+
+export const defaultUsers: AppUser[] = seedUsers.map(withSaturdaySize);

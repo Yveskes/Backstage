@@ -27,6 +27,7 @@ import {
   type StaffDayId,
   type StaffTaskId,
 } from "@/lib/staff-tasks";
+import { formatTshirtSizes, getsTshirtPerFestivalDay, hasConfirmedTshirt } from "@/lib/tshirts";
 
 function sameModules(a: ModuleId[], b: ModuleId[]) {
   return a.length === b.length && a.every((id) => b.includes(id));
@@ -413,11 +414,14 @@ export default function MedewerkerDetailPage() {
         <h2 className="text-base font-semibold text-zinc-900">T-shirt</h2>
         <p className="mt-1 text-sm text-zinc-500">
           Vorig jaar: {person.tshirtSizeLastYear ?? "onbekend"}. Dit jaar kiest de medewerker zelf en moet bevestigen.
+          {getsTshirtPerFestivalDay(person.days)
+            ? " Twee festivaldagen = twee t-shirts, eventueel met een andere maat per dag. Opbouw en afbouw tellen niet mee."
+            : " Opbouw en afbouw geven geen extra t-shirt."}
         </p>
         <p className="mt-3 text-sm text-zinc-800">
-          {person.tshirtConfirmed
-            ? `Bevestigd: ${person.tshirtSize}`
-            : `Nog niet bevestigd${person.tshirtSize ? ` (voorstel ${person.tshirtSize})` : ""}`}
+          {hasConfirmedTshirt(person)
+            ? `Bevestigd: ${formatTshirtSizes(person)}`
+            : `Nog niet bevestigd${person.tshirtSize ? ` (voorstel ${formatTshirtSizes(person)})` : ""}`}
         </p>
       </section>
 

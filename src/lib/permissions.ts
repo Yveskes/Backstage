@@ -70,6 +70,7 @@ export type AppUser = {
   afbouwDays: AfbouwDayId[];
   tshirtSizeLastYear: TshirtSize | null;
   tshirtSize: TshirtSize | null;
+  tshirtSizeSaturday: TshirtSize | null;
   tshirtConfirmed: boolean;
   active: boolean;
   invitePending?: boolean;
@@ -262,6 +263,7 @@ export function createNewUser(input: {
     afbouwDays: [],
     tshirtSizeLastYear: null,
     tshirtSize: null,
+    tshirtSizeSaturday: null,
     tshirtConfirmed: false,
     active: true,
   };

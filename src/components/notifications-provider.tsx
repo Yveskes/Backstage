@@ -36,7 +36,7 @@ import {
 import { canAccessPath, canAssignRoles, canManageStaff, firstNameOf } from "@/lib/permissions";
 import { useUsers } from "@/components/users-provider";
 import { useExpenses } from "@/components/expenses-provider";
-import { needsTshirt } from "@/lib/tshirts";
+import { needsTshirt, hasConfirmedTshirt } from "@/lib/tshirts";
 import { expenseStatusLabel, formatEuro } from "@/lib/expenses";
 import { formatStaffTasks, isStaffTaskId, usersForTasks, type StaffTaskId } from "@/lib/staff-tasks";
 
@@ -455,7 +455,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<NotificationsContextValue>(() => {
-    const pending = users.filter((user) => needsTshirt(user.kind) && !user.tshirtConfirmed);
+    const pending = users.filter((user) => needsTshirt(user.kind) && !hasConfirmedTshirt(user));
     const extra: AppNotification[] = [];
 
     if (canManageStaff(currentUser) && pending.length > 0) {

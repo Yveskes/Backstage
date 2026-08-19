@@ -13,6 +13,7 @@ import {
   staffTaskOptionsFor,
   type StaffTaskId,
 } from "@/lib/staff-tasks";
+import { formatTshirtSizes, hasConfirmedTshirt } from "@/lib/tshirts";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -182,8 +183,8 @@ function UserList({
                   </td>
                   <td className="px-4 py-3 text-zinc-600">{formatUserSchedule(user) || "—"}</td>
                   <td className="px-4 py-3">
-                    {user.tshirtConfirmed ? (
-                      <span className="text-emerald-800">{user.tshirtSize}</span>
+                    {hasConfirmedTshirt(user) ? (
+                      <span className="text-emerald-800">{formatTshirtSizes(user)}</span>
                     ) : (
                       <span className="inline-flex text-red-600" title="Nog niet bevestigd">
                         <CrossIcon className="h-4 w-4" />

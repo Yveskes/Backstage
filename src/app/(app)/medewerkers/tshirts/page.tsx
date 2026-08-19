@@ -3,7 +3,16 @@
 import { PageHeader } from "@/components/page-header";
 import { useUsers } from "@/components/users-provider";
 import { canManageStaff } from "@/lib/permissions";
-import { downloadTshirtCsv, needsTshirt, tshirtCsv, tshirtSizes } from "@/lib/tshirts";
+import {
+  downloadTshirtCsv,
+  formatTshirtSizes,
+  getsTshirtPerFestivalDay,
+  hasConfirmedTshirt,
+  needsTshirt,
+  orderedTshirtSizes,
+  tshirtCsv,
+  tshirtSizes,
+} from "@/lib/tshirts";
 import Link from "next/link";
 
 export default function TshirtListPage() {
@@ -19,10 +28,11 @@ export default function TshirtListPage() {
   }
 
   const rows = users.filter((user) => needsTshirt(user.kind));
-  const pending = rows.filter((user) => !user.tshirtConfirmed);
+  const pending = rows.filter((user) => !hasConfirmedTshirt(user));
+  const shirts = rows.flatMap(orderedTshirtSizes);
   const counts = tshirtSizes.map((size) => ({
     size,
-    count: rows.filter((user) => user.tshirtConfirmed && user.tshirtSize === size).length,
+    count: shirts.filter((entry) => entry === size).length,
   }));
 
   return (
@@ -37,7 +47,7 @@ export default function TshirtListPage() {
 
       <PageHeader
         title="T-shirtlijst"
-        description="Overzicht van bevestigde maten. Trek de lijst voor de bestelling."
+        description="Wie vrijdag én zaterdag helpt, krijgt een t-shirt per festivaldag (niet voor opbouw of afbouw) en mag per dag een andere maat kiezen."
         actions={
           <button
             type="button"
@@ -67,6 +77,9 @@ export default function TshirtListPage() {
           </div>
         ))}
       </section>
+      <p className="mb-6 text-sm text-zinc-500">
+        {shirts.length} t-shirt{shirts.length === 1 ? "" : "s"} in totaal (twee dagen = twee stuks).
+      </p>
 
       <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
         <table className="w-full text-left text-sm">
@@ -75,6 +88,7 @@ export default function TshirtListPage() {
               <th className="px-4 py-3 font-medium">Naam</th>
               <th className="px-4 py-3 font-medium">Vorig jaar</th>
               <th className="px-4 py-3 font-medium">Dit jaar</th>
+              <th className="px-4 py-3 font-medium">Aantal</th>
               <th className="px-4 py-3 font-medium">Status</th>
             </tr>
           </thead>
@@ -87,9 +101,10 @@ export default function TshirtListPage() {
                   </Link>
                 </td>
                 <td className="px-4 py-3 text-zinc-600">{user.tshirtSizeLastYear ?? "—"}</td>
-                <td className="px-4 py-3 text-zinc-600">{user.tshirtSize ?? "—"}</td>
+                <td className="px-4 py-3 text-zinc-600">{formatTshirtSizes(user)}</td>
+                <td className="px-4 py-3 text-zinc-600">{getsTshirtPerFestivalDay(user.days) ? 2 : 1}</td>
                 <td className="px-4 py-3">
-                  {user.tshirtConfirmed ? (
+                  {hasConfirmedTshirt(user) ? (
                     <span className="text-emerald-800">Bevestigd</span>
                   ) : (
                     <span className="text-red-800">Nog niet bevestigd</span>

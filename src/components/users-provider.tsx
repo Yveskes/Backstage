@@ -26,7 +26,7 @@ export type TshirtNotice = {
   id: string;
   userId: string;
   fullName: string;
-  size: TshirtSize;
+  size: string;
   time: string;
 };
 
@@ -45,7 +45,7 @@ type UsersContextValue = {
   refreshDirectory: () => Promise<void>;
   removeUser: (id: string) => Promise<{ error?: string }>;
   removeTaskFromAll: (taskId: string) => void;
-  confirmTshirt: (id: string, size: TshirtSize) => void;
+  confirmTshirt: (id: string, size: TshirtSize, saturdaySize?: TshirtSize | null) => void;
 };
 
 const UsersContext = createContext<UsersContextValue | null>(null);
@@ -73,6 +73,11 @@ function normalizeUser(user: Partial<AppUser> & { fullName?: string; email?: str
     afbouwDays: sanitizeAfbouwDays(user.afbouwDays),
     tshirtSizeLastYear: sanitizeTshirtSize(user.tshirtSizeLastYear),
     tshirtSize: defaultTshirtSize(user.tshirtSizeLastYear, user.tshirtSize),
+    tshirtSizeSaturday:
+      sanitizeTshirtSize(user.tshirtSizeSaturday) ??
+      (user.days === "both" && user.tshirtConfirmed
+        ? defaultTshirtSize(user.tshirtSizeLastYear, user.tshirtSize)
+        : null),
     tshirtConfirmed: Boolean(user.tshirtConfirmed),
     active: user.active ?? true,
     invitePending: Boolean(user.invitePending),
@@ -428,6 +433,10 @@ export function UsersProvider({ children }: { children: ReactNode }) {
                   patch.tshirtSize !== undefined
                     ? sanitizeTshirtSize(patch.tshirtSize)
                     : user.tshirtSize,
+                tshirtSizeSaturday:
+                  patch.tshirtSizeSaturday !== undefined
+                    ? sanitizeTshirtSize(patch.tshirtSizeSaturday)
+                    : user.tshirtSizeSaturday,
                 tshirtConfirmed: patch.tshirtConfirmed ?? user.tshirtConfirmed,
               };
             }
@@ -482,6 +491,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
               afbouwDays: sanitizeAfbouwDays(user.afbouwDays),
               tshirtSizeLastYear: sanitizeTshirtSize(user.tshirtSizeLastYear),
               tshirtSize: defaultTshirtSize(user.tshirtSizeLastYear, user.tshirtSize),
+              tshirtSizeSaturday: sanitizeTshirtSize(user.tshirtSizeSaturday),
               tshirtConfirmed: false,
               invitePending: user.invitePending ?? true,
             },
@@ -531,7 +541,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
         }
         return {};
       },
-      confirmTshirt(id, size) {
+      confirmTshirt(id, size, saturdaySize) {
         const target = users.find((user) => user.id === id);
         const actor = users.find((user) => user.id === sessionUserId);
         if (!target || !actor) {
@@ -550,19 +560,38 @@ export function UsersProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        const twoDays = target.days === "both";
+        const nextSaturday = twoDays ? sanitizeTshirtSize(saturdaySize ?? size) : null;
+        if (twoDays && !nextSaturday) {
+          return;
+        }
+
         setUsers((current) =>
           current.map((user) =>
-            user.id === id ? { ...user, tshirtSize: size, tshirtConfirmed: true } : user,
+            user.id === id
+              ? {
+                  ...user,
+                  tshirtSize: size,
+                  tshirtSizeSaturday: nextSaturday,
+                  tshirtConfirmed: true,
+                }
+              : user,
           ),
         );
 
         if (needsTshirt(target.kind)) {
+          const sizeLabel =
+            twoDays && nextSaturday && nextSaturday !== size
+              ? `Vr ${size} · Za ${nextSaturday}`
+              : twoDays
+                ? `2× ${size}`
+                : size;
           setTshirtNotices((current) => [
             {
               id: `tshirt-${id}-${Date.now()}`,
               userId: id,
               fullName: target.fullName,
-              size,
+              size: sizeLabel,
               time: "Zojuist",
             },
             ...current,
