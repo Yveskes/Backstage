@@ -2,11 +2,12 @@
 
 import { PageHeader } from "@/components/page-header";
 import { useNotifications } from "@/components/notifications-provider";
+import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
 import { canManageStaff, firstNameOf } from "@/lib/permissions";
 import {
   formatStaffTasks,
-  staffTaskOptions,
+  staffTaskOptionsFor,
   usersForTask,
   usersForTasks,
   type StaffTaskId,
@@ -16,6 +17,8 @@ import { useState, type FormEvent } from "react";
 
 export default function TaskBroadcastPage() {
   const { users, currentUser } = useUsers();
+  const { posts } = useStaffPlanning();
+  const taskOptions = staffTaskOptionsFor(posts);
   const { sendTaskBroadcast, taskBroadcasts } = useNotifications();
   const canManage = canManageStaff(currentUser);
   const [taskIds, setTaskIds] = useState<StaffTaskId[]>([]);
@@ -79,7 +82,7 @@ export default function TaskBroadcastPage() {
           <legend className="text-sm font-medium text-zinc-800">Taken</legend>
           <p className="mt-1 text-sm text-zinc-500">Je kunt meerdere taken aanduiden.</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {staffTaskOptions.map((task) => {
+            {taskOptions.map((task) => {
               const selected = taskIds.includes(task.id);
               const count = usersForTask(users, task.id).length;
 

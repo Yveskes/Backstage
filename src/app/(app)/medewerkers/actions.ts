@@ -257,8 +257,8 @@ export async function deleteDirectoryPerson(email: string): Promise<{ error?: st
     return { error: "Deze persoon heeft geen e-mailadres." };
   }
 
-  if (target === actorEmail || isAdminEmail(target)) {
-    return { error: "Deze persoon kan niet verwijderd worden." };
+  if (target === actorEmail) {
+    return { error: "Je kunt jezelf niet verwijderen." };
   }
 
   const admin = createAdminClient();
@@ -289,7 +289,9 @@ export async function deleteDirectoryPerson(email: string): Promise<{ error?: st
     .eq("email", target)
     .maybeSingle();
 
-  if (profile?.user_kind === "admin") {
+  const targetIsAdmin = profile?.user_kind === "admin" || isAdminEmail(target);
+  const actorIsAdmin = isAdminEmail(actorEmail) || viewer?.user_kind === "admin";
+  if (targetIsAdmin && !actorIsAdmin) {
     return { error: "Admin kan niet verwijderd worden." };
   }
 

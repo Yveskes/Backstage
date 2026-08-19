@@ -10,6 +10,7 @@ import { useUsers } from "@/components/users-provider";
 import {
   canAssignRoles,
   canManageStaff,
+  canRemoveDirectoryPerson,
   homePath,
   kindLabel,
   moduleOptions,
@@ -21,7 +22,7 @@ import {
   isFestivalTask,
   opbouwDayOptions,
   staffDayOptions,
-  staffTaskOptions,
+  staffTaskOptionsFor,
   toggleId,
   type StaffDayId,
   type StaffTaskId,
@@ -134,7 +135,7 @@ function MenuModulesEditor({
 export default function MedewerkerDetailPage() {
   const params = useParams<{ userId: string }>();
   const { users, currentUser, sessionUser, updateUser, removeUser, setCurrentUserId } = useUsers();
-  const { planning, toggleLead, clearLeadIf, clearAttendance } = useStaffPlanning();
+  const { planning, posts, toggleLead, clearLeadIf, clearAttendance } = useStaffPlanning();
   const router = useRouter();
   const user = users.find((entry) => entry.id === params.userId);
   const [leadError, setLeadError] = useState<string | null>(null);
@@ -144,10 +145,11 @@ export default function MedewerkerDetailPage() {
   }
 
   const person = user;
+  const taskOptions = staffTaskOptionsFor(posts);
   const isAdmin = canAssignRoles(currentUser);
   const canManage = canManageStaff(currentUser);
   const canEditRights = isAdmin && person.kind !== "admin";
-  const canDelete = canManage && person.id !== sessionUser.id && person.kind !== "admin";
+  const canDelete = canRemoveDirectoryPerson(sessionUser, person);
 
   function toggleTask(taskId: StaffTaskId) {
     const selected = person.tasks.includes(taskId);
@@ -181,7 +183,7 @@ export default function MedewerkerDetailPage() {
     }
 
     const holder = users.find((entry) => entry.id === result.holderId);
-    const post = staffTaskOptions.find((task) => task.id === taskId)?.label ?? taskId;
+    const post = taskOptions.find((task) => task.id === taskId)?.label ?? taskId;
     setLeadError(`${holder?.fullName ?? "Iemand anders"} is al verantwoordelijke voor ${post}.`);
   }
 
@@ -191,7 +193,9 @@ export default function MedewerkerDetailPage() {
 
   async function handleDelete() {
     const confirmed = window.confirm(
-      `${person.fullName} verwijderen? Deze persoon verdwijnt uit de lijst.`,
+      person.kind === "admin"
+        ? `${person.fullName} (${person.email}) verwijderen? Dit extra admin-account verdwijnt uit de lijst.`
+        : `${person.fullName} verwijderen? Deze persoon verdwijnt uit de lijst.`,
     );
     if (!confirmed) {
       return;
@@ -242,7 +246,7 @@ export default function MedewerkerDetailPage() {
           Duid aan waar deze persoon ingezet wordt.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          {staffTaskOptions.map((task) => {
+          {taskOptions.map((task) => {
             const selected = person.tasks.includes(task.id);
 
             return (
@@ -275,7 +279,7 @@ export default function MedewerkerDetailPage() {
               </p>
             ) : null}
             {person.tasks.filter(isFestivalTask).map((taskId) => {
-              const task = staffTaskOptions.find((option) => option.id === taskId);
+              const task = taskOptions.find((option) => option.id === taskId);
               const isLead = planning.responsible[taskId] === person.id;
 
               return (

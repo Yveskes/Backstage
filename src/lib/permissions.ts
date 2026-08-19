@@ -275,6 +275,22 @@ export function canManageStaff(user: AppUser) {
   return user.kind === "admin" || user.modules.includes("medewerkers");
 }
 
+export function canRemoveDirectoryPerson(actor: AppUser, target: AppUser) {
+  if (!canManageStaff(actor) || actor.id === target.id) {
+    return false;
+  }
+
+  if (actor.email.trim().toLowerCase() === target.email.trim().toLowerCase()) {
+    return false;
+  }
+
+  if (target.kind === "admin") {
+    return actor.kind === "admin";
+  }
+
+  return true;
+}
+
 export function canClaimExpenses(user: AppUser) {
   return user.kind === "admin" || user.kind === "team";
 }

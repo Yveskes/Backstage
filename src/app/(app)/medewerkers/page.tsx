@@ -4,13 +4,13 @@ import { CrossIcon, CrownIcon, PencilIcon, TrashIcon } from "@/components/icons"
 import { PageHeader } from "@/components/page-header";
 import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
-import { canManageStaff, kindLabel, type AppUser } from "@/lib/permissions";
+import { canManageStaff, canRemoveDirectoryPerson, kindLabel, type AppUser } from "@/lib/permissions";
 import { leadsForUser } from "@/lib/staff-planning";
 import {
   formatStaffTasks,
   formatStaffTasksWithLead,
   formatUserSchedule,
-  staffTaskOptions,
+  staffTaskOptionsFor,
   type StaffTaskId,
 } from "@/lib/staff-tasks";
 import Link from "next/link";
@@ -24,6 +24,8 @@ type ListFilter = "all" | "bestuur" | StaffTaskId;
 
 export default function MedewerkersPage() {
   const { users, currentUser, sessionUser, removeUser, refreshDirectory } = useUsers();
+  const { posts } = useStaffPlanning();
+  const taskOptions = staffTaskOptionsFor(posts);
   const canManage = canManageStaff(currentUser);
   const [filter, setFilter] = useState<ListFilter>("all");
 
@@ -76,14 +78,14 @@ export default function MedewerkersPage() {
           <CrownIcon className="h-3.5 w-3.5" />
           Bestuur
         </FilterChip>
-        {staffTaskOptions.map((task) => (
+        {taskOptions.map((task) => (
           <FilterChip key={task.id} active={filter === task.id} onClick={() => setFilter(task.id)}>
             {task.label}
           </FilterChip>
         ))}
       </div>
 
-      <UserList users={visible} sessionUserId={sessionUser.id} canManage={canManage} onRemove={removeUser} />
+      <UserList users={visible} sessionUser={sessionUser} canManage={canManage} onRemove={removeUser} />
     </>
   );
 }
@@ -112,12 +114,12 @@ function FilterChip({
 
 function UserList({
   users,
-  sessionUserId,
+  sessionUser,
   canManage,
   onRemove,
 }: {
   users: AppUser[];
-  sessionUserId: string;
+  sessionUser: AppUser;
   canManage: boolean;
   onRemove: (id: string) => Promise<{ error?: string }>;
 }) {
@@ -147,7 +149,7 @@ function UserList({
             </tr>
           ) : (
             users.map((user) => {
-              const canRemove = canManage && user.id !== sessionUserId && user.kind !== "admin";
+              const canRemove = canManage && canRemoveDirectoryPerson(sessionUser, user);
               const leadIds = leadsForUser(planning, user.id);
               const bestuur = isBestuur(user);
 
@@ -207,7 +209,9 @@ function UserList({
                           title="Verwijderen"
                           onClick={() => {
                             const confirmed = window.confirm(
-                              `${user.fullName} verwijderen? Deze persoon verdwijnt uit de lijst.`,
+                              user.kind === "admin"
+                                ? `${user.fullName} (${user.email}) verwijderen? Dit extra admin-account verdwijnt uit de lijst.`
+                                : `${user.fullName} verwijderen? Deze persoon verdwijnt uit de lijst.`,
                             );
                             if (!confirmed) {
                               return;

@@ -1,36 +1,43 @@
+"use client";
+
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useSponsors } from "@/components/sponsors-provider";
 import {
-  getSponsorName,
-  mockDrinkVouchers,
-  mockInvoices,
-  mockTickets,
+  formatSponsorEuro,
+  sponsorBenefitStatusLabel,
+  sponsorInvoiceStatusLabel,
 } from "@/lib/sponsors";
 
 export function InvoiceTable({ sponsorId }: { sponsorId?: string }) {
-  const invoices = sponsorId
-    ? mockInvoices.filter((invoice) => invoice.sponsorId === sponsorId)
-    : mockInvoices;
+  const { invoices, sponsors } = useSponsors();
+  const rows = sponsorId ? invoices.filter((invoice) => invoice.sponsorId === sponsorId) : invoices;
 
   return (
     <DataTable
       empty="Nog geen facturen."
       headers={sponsorId ? ["Nummer", "Bedrag", "Status"] : ["Nummer", "Sponsor", "Bedrag", "Status"]}
-      rows={invoices.map((invoice) => [
-        invoice.invoiceNumber,
+      rows={rows.map((invoice) => [
+        <Link
+          key={invoice.id}
+          href={`/sponsoring/${invoice.sponsorId}/facturen/${invoice.id}`}
+          className="hover:underline"
+        >
+          {invoice.invoiceNumber}
+        </Link>,
         ...(sponsorId
           ? []
           : [
               <Link
-                key={invoice.id}
+                key={`${invoice.id}-sponsor`}
                 href={`/sponsoring/${invoice.sponsorId}/facturen`}
                 className="hover:underline"
               >
-                {getSponsorName(invoice.sponsorId)}
+                {sponsors.find((sponsor) => sponsor.id === invoice.sponsorId)?.name ?? "Onbekende sponsor"}
               </Link>,
             ]),
-        `€ ${invoice.amount.toLocaleString("nl-BE")}`,
-        invoice.status,
+        formatSponsorEuro(invoice.amount),
+        sponsorInvoiceStatusLabel[invoice.status],
       ])}
     />
   );
@@ -43,7 +50,8 @@ export function BenefitTable({
   sponsorId?: string;
   type: "drankbonnen" | "vrijkaarten";
 }) {
-  const items = (type === "drankbonnen" ? mockDrinkVouchers : mockTickets).filter((item) =>
+  const { drinkVouchers, tickets, sponsors } = useSponsors();
+  const items = (type === "drankbonnen" ? drinkVouchers : tickets).filter((item) =>
     sponsorId ? item.sponsorId === sponsorId : true,
   );
 
@@ -61,11 +69,11 @@ export function BenefitTable({
                 href={`/sponsoring/${item.sponsorId}/${type}`}
                 className="hover:underline"
               >
-                {getSponsorName(item.sponsorId)}
+                {sponsors.find((sponsor) => sponsor.id === item.sponsorId)?.name ?? "Onbekende sponsor"}
               </Link>,
             ]),
         String(item.quantity),
-        item.status,
+        sponsorBenefitStatusLabel[item.status],
       ])}
     />
   );

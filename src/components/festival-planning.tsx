@@ -1,20 +1,22 @@
 "use client";
 
-import { CheckIcon, StarIcon } from "@/components/icons";
-import { useRef, useState, type DragEvent } from "react";
+import { CheckIcon, PencilIcon, StarIcon } from "@/components/icons";
+import { useRef, useState, type DragEvent, type FormEvent } from "react";
 import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
+import { canManageStaff, type AppUser } from "@/lib/permissions";
 import { formatFill, isPostComplete, isPostUnderfilled } from "@/lib/staff-planning";
 import {
-  festivalTaskOptions,
   isFestivalTask,
   planningDayOptions,
+  postsForDay,
+  staffDayOptions,
   worksOnDay,
+  type FestivalPost,
   type PlanningDayId,
   type StaffDayId,
   type StaffTaskId,
 } from "@/lib/staff-tasks";
-import type { AppUser } from "@/lib/permissions";
 
 type DragPayload = {
   userId: string;
@@ -54,9 +56,11 @@ function parseNeed(raw: string) {
 }
 
 export function FestivalPlanning() {
-  const { users, updateUser } = useUsers();
-  const { planning, setNeed } = useStaffPlanning();
+  const { users, updateUser, currentUser } = useUsers();
+  const { planning, posts, setNeed, addPost, updatePost } = useStaffPlanning();
+  const canManage = canManageStaff(currentUser);
   const [overKey, setOverKey] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const dragging = useRef(false);
 
   const unassigned = users
@@ -116,6 +120,7 @@ export function FestivalPlanning() {
 
   return (
     <div className="space-y-4">
+      {canManage ? <NewPostForm onAdd={addPost} /> : null}
       {unassigned.length > 0 ? (
         <section className="rounded border border-red-200 bg-red-50 p-4">
           <h2 className="text-sm font-semibold text-red-900">Nog geen festivaldag</h2>
@@ -148,7 +153,7 @@ export function FestivalPlanning() {
           <section key={day.id}>
             <h2 className="text-base font-semibold text-zinc-900">{day.label}</h2>
             <div className="mt-3 space-y-3">
-              {festivalTaskOptions.map((task) => {
+              {postsForDay(posts, day.id).map((task) => {
                 const people = peopleForCell(users, task.id, day.id);
                 const responsibleId = planning.responsible[task.id];
                 const ordered = [
@@ -192,9 +197,26 @@ export function FestivalPlanning() {
                       </span>
                     ) : null}
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <p className={`text-sm font-medium ${underfilled ? "text-red-900" : "text-zinc-900"}`}>
-                        {task.label}
-                      </p>
+                      <div className="flex min-w-0 items-center gap-1">
+                        <p className={`truncate text-sm font-medium ${underfilled ? "text-red-900" : "text-zinc-900"}`}>
+                          {task.label}
+                        </p>
+                        {canManage ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setEditingId((current) => (current === task.id ? null : task.id));
+                            }}
+                            className="rounded p-1 text-zinc-400 hover:bg-white hover:text-zinc-800"
+                            aria-label={`${task.label} bewerken`}
+                            title="Post bewerken"
+                          >
+                            <PencilIcon className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
                       <label className={`flex items-center gap-2 text-xs ${underfilled ? "text-red-800" : "text-zinc-500"}`}>
                         Nodig
                         <input
@@ -209,6 +231,19 @@ export function FestivalPlanning() {
                         <span>{formatFill(needed, people.length)}</span>
                       </label>
                     </div>
+
+                    {editingId === task.id && (task.days === day.id || (task.days === "both" && day.id === "friday")) ? (
+                      <PostEditor
+                        post={task}
+                        onSave={(patch) => {
+                          const result = updatePost(task.id, patch);
+                          if (!result.error) {
+                            setEditingId(null);
+                          }
+                        }}
+                        onCancel={() => setEditingId(null)}
+                      />
+                    ) : null}
 
                     {ordered.length === 0 ? null : (
                       <ul className="space-y-1">
@@ -263,5 +298,148 @@ export function FestivalPlanning() {
         ))}
       </div>
     </div>
+  );
+}
+
+function DayChoice({
+  value,
+  onChange,
+}: {
+  value: StaffDayId;
+  onChange: (value: StaffDayId) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {staffDayOptions.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          onClick={() => onChange(option.id)}
+          className={`rounded-full px-2.5 py-1 text-xs ${
+            value === option.id ? "bg-zinc-900 text-white" : "border border-zinc-200 bg-white text-zinc-700"
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function NewPostForm({
+  onAdd,
+}: {
+  onAdd: (input: { label: string; days: StaffDayId }) => FestivalPost | { error: string };
+}) {
+  const [open, setOpen] = useState(false);
+  const [label, setLabel] = useState("");
+  const [days, setDays] = useState<StaffDayId>("both");
+  const [error, setError] = useState<string | null>(null);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const result = onAdd({ label, days });
+    if ("error" in result) {
+      setError(result.error);
+      return;
+    }
+
+    setLabel("");
+    setDays("both");
+    setError(null);
+    setOpen(false);
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-lg border border-dashed border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50"
+      >
+        Nieuwe post
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="rounded-xl border border-zinc-200 bg-white p-4">
+      <p className="text-sm font-medium text-zinc-900">Nieuwe post</p>
+      <p className="mt-1 text-xs text-zinc-500">Naam plus of de post op vrijdag, zaterdag of beide dagen staat.</p>
+      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+        <label className="block min-w-0 flex-1 text-sm">
+          <span className="font-medium text-zinc-700">Naam</span>
+          <input
+            value={label}
+            onChange={(event) => setLabel(event.target.value)}
+            placeholder="bv. Parking"
+            autoFocus
+            className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-400"
+          />
+        </label>
+        <div className="sm:pb-0.5">
+          <p className="text-sm font-medium text-zinc-700">Dag</p>
+          <div className="mt-1">
+            <DayChoice value={days} onChange={setDays} />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button type="submit" className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white">
+            Toevoegen
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              setError(null);
+            }}
+            className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-700"
+          >
+            Annuleren
+          </button>
+        </div>
+      </div>
+      {error ? <p className="mt-2 text-sm text-red-800">{error}</p> : null}
+    </form>
+  );
+}
+
+function PostEditor({
+  post,
+  onSave,
+  onCancel,
+}: {
+  post: FestivalPost;
+  onSave: (patch: { label: string; days: StaffDayId }) => void;
+  onCancel: () => void;
+}) {
+  const [label, setLabel] = useState(post.label);
+  const [days, setDays] = useState<StaffDayId>(post.days);
+
+  return (
+    <form
+      className="mb-3 rounded-lg border border-zinc-200 bg-white p-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSave({ label, days });
+      }}
+    >
+      <input
+        value={label}
+        onChange={(event) => setLabel(event.target.value)}
+        className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm outline-none focus:border-zinc-400"
+      />
+      <div className="mt-2">
+        <DayChoice value={days} onChange={setDays} />
+      </div>
+      <div className="mt-2 flex gap-2">
+        <button type="submit" className="rounded bg-zinc-900 px-2.5 py-1 text-xs font-medium text-white">
+          Opslaan
+        </button>
+        <button type="button" onClick={onCancel} className="rounded px-2.5 py-1 text-xs text-zinc-600">
+          Annuleren
+        </button>
+      </div>
+    </form>
   );
 }

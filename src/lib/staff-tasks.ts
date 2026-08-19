@@ -8,24 +8,130 @@ export const staffTaskIds = [
   "ingang",
 ] as const;
 
-export type StaffTaskId = (typeof staffTaskIds)[number];
+export type BuiltinStaffTaskId = (typeof staffTaskIds)[number];
+export type StaffTaskId = string;
 
 export const festivalTaskIds = ["toog-a", "toog-b", "kassawagen", "runner", "ingang"] as const;
-export type FestivalTaskId = (typeof festivalTaskIds)[number];
+export type FestivalTaskId = string;
+
+export type FestivalPost = {
+  id: StaffTaskId;
+  label: string;
+  days: StaffDayId;
+};
+
+export const defaultFestivalPosts: FestivalPost[] = [
+  { id: "toog-a", label: "Toog A", days: "both" },
+  { id: "toog-b", label: "Toog B", days: "both" },
+  { id: "kassawagen", label: "Kassawagen", days: "both" },
+  { id: "runner", label: "Runner", days: "both" },
+  { id: "ingang", label: "Ingang", days: "both" },
+];
+
+const builtinTaskLabels: Record<string, string> = {
+  opbouw: "Opbouw",
+  afbouw: "Afbouw",
+};
 
 export const staffTaskOptions: { id: StaffTaskId; label: string }[] = [
   { id: "opbouw", label: "Opbouw" },
   { id: "afbouw", label: "Afbouw" },
-  { id: "toog-a", label: "Toog A" },
-  { id: "toog-b", label: "Toog B" },
-  { id: "kassawagen", label: "Kassawagen" },
-  { id: "runner", label: "Runner" },
-  { id: "ingang", label: "Ingang" },
+  ...defaultFestivalPosts.map((post) => ({ id: post.id, label: post.label })),
 ];
 
-export const festivalTaskOptions = staffTaskOptions.filter((task) =>
-  festivalTaskIds.includes(task.id as FestivalTaskId),
-);
+export const festivalTaskOptions = defaultFestivalPosts.map((post) => ({
+  id: post.id,
+  label: post.label,
+}));
+
+let festivalPostCatalog: FestivalPost[] = defaultFestivalPosts.map((post) => ({ ...post }));
+
+export function setFestivalPostCatalog(posts: FestivalPost[]) {
+  festivalPostCatalog = posts;
+}
+
+export function getFestivalPostCatalog() {
+  return festivalPostCatalog;
+}
+
+export function staffTaskOptionsFor(posts: FestivalPost[]) {
+  return [
+    { id: "opbouw", label: "Opbouw" },
+    { id: "afbouw", label: "Afbouw" },
+    ...posts.map((post) => ({ id: post.id, label: post.label })),
+  ];
+}
+
+export function postsForDay(posts: FestivalPost[], day: PlanningDayId) {
+  return posts.filter((post) => post.days === "both" || post.days === day);
+}
+
+export function slugifyPostLabel(label: string) {
+  const slug = label
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "post";
+}
+
+export function uniquePostId(label: string, existing: FestivalPost[]) {
+  const taken = new Set(["opbouw", "afbouw", ...existing.map((post) => post.id)]);
+  const base = slugifyPostLabel(label);
+  if (!taken.has(base)) {
+    return base;
+  }
+
+  let index = 2;
+  while (taken.has(`${base}-${index}`)) {
+    index += 1;
+  }
+
+  return `${base}-${index}`;
+}
+
+export function sanitizeFestivalPosts(raw: unknown): FestivalPost[] {
+  const stored = Array.isArray(raw)
+    ? raw.flatMap((entry) => {
+        if (!entry || typeof entry !== "object") {
+          return [];
+        }
+
+        const data = entry as Partial<FestivalPost>;
+        const id = String(data.id ?? "").trim();
+        const label = String(data.label ?? "").trim();
+        if (!id || !label || isBuildTask(id) || !isStaffTaskId(id)) {
+          return [];
+        }
+
+        return [
+          {
+            id,
+            label,
+            days: isStaffDayId(data.days) ? data.days : "both",
+          },
+        ];
+      })
+    : [];
+
+  const byId = new Map(defaultFestivalPosts.map((post) => [post.id, { ...post }]));
+  for (const post of stored) {
+    byId.set(post.id, post);
+  }
+
+  const extras = stored.filter((post) => !defaultFestivalPosts.some((entry) => entry.id === post.id));
+  return [...defaultFestivalPosts.map((post) => byId.get(post.id) ?? post), ...extras];
+}
+
+export function labelForTask(taskId: StaffTaskId, posts: FestivalPost[] = festivalPostCatalog) {
+  if (builtinTaskLabels[taskId]) {
+    return builtinTaskLabels[taskId];
+  }
+
+  return posts.find((post) => post.id === taskId)?.label ?? staffTaskOptions.find((task) => task.id === taskId)?.label ?? taskId;
+}
 
 export const buildTaskIds = ["opbouw", "afbouw"] as const;
 export type BuildTaskId = (typeof buildTaskIds)[number];
@@ -85,11 +191,19 @@ export const planningDayOptions: { id: PlanningDayId; label: string }[] = [
 ];
 
 export function isStaffTaskId(value: unknown): value is StaffTaskId {
-  return staffTaskIds.includes(value as StaffTaskId);
+  if (typeof value !== "string" || !value.trim()) {
+    return false;
+  }
+
+  if ((staffTaskIds as readonly string[]).includes(value)) {
+    return true;
+  }
+
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(value);
 }
 
 export function isFestivalTask(taskId: StaffTaskId) {
-  return festivalTaskIds.includes(taskId as FestivalTaskId);
+  return !isBuildTask(taskId) && isStaffTaskId(taskId);
 }
 
 export function isStaffDayId(value: unknown): value is StaffDayId {
@@ -114,16 +228,18 @@ export function sanitizeAfbouwDays(value: unknown): AfbouwDayId[] {
   return ids.filter(isAfbouwDayId).filter((id, index, all) => all.indexOf(id) === index);
 }
 
-export function formatStaffTasks(taskIds: StaffTaskId[]) {
-  return taskIds
-    .map((id) => staffTaskOptions.find((option) => option.id === id)?.label ?? id)
-    .join(", ");
+export function formatStaffTasks(taskIds: StaffTaskId[], posts: FestivalPost[] = festivalPostCatalog) {
+  return taskIds.map((id) => labelForTask(id, posts)).join(", ");
 }
 
-export function formatStaffTasksWithLead(taskIds: StaffTaskId[], leadIds: StaffTaskId[]) {
+export function formatStaffTasksWithLead(
+  taskIds: StaffTaskId[],
+  leadIds: StaffTaskId[],
+  posts: FestivalPost[] = festivalPostCatalog,
+) {
   return taskIds
     .map((id) => {
-      const label = staffTaskOptions.find((option) => option.id === id)?.label ?? id;
+      const label = labelForTask(id, posts);
       return leadIds.includes(id) ? `${label} *` : label;
     })
     .join(", ");

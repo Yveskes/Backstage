@@ -1,10 +1,11 @@
 import {
   afbouwDayIds,
-  festivalTaskIds,
   halfDayIds,
   isBuildTask,
+  isFestivalTask,
   isOpbouwDayId,
   isAfbouwDayId,
+  isStaffTaskId,
   opbouwDayIds,
   staffTaskIds,
   type AfbouwDayId,
@@ -18,8 +19,8 @@ import {
 export type NeedMap = Record<string, number | null>;
 
 export type StaffPlanning = {
-  needed: Record<StaffTaskId, NeedMap>;
-  responsible: Partial<Record<StaffTaskId, string>>;
+  needed: Record<string, NeedMap>;
+  responsible: Partial<Record<string, string>>;
   attendance: Record<string, HalfDayId[]>;
 };
 
@@ -57,10 +58,7 @@ function emptyNeed(taskId: StaffTaskId): NeedMap {
 
 export function emptyPlanning(): StaffPlanning {
   return {
-    needed: Object.fromEntries(staffTaskIds.map((id) => [id, emptyNeed(id)])) as Record<
-      StaffTaskId,
-      NeedMap
-    >,
+    needed: Object.fromEntries(staffTaskIds.map((id) => [id, emptyNeed(id)])),
     responsible: {},
     attendance: {},
   };
@@ -91,6 +89,27 @@ function allowedDayIds(taskId: StaffTaskId): readonly string[] {
   return ["friday", "saturday"];
 }
 
+function collectTaskIds(raw: Partial<StaffPlanning> | undefined) {
+  const ids = new Set<string>(staffTaskIds);
+  if (raw?.needed && typeof raw.needed === "object") {
+    for (const key of Object.keys(raw.needed)) {
+      if (isStaffTaskId(key)) {
+        ids.add(key);
+      }
+    }
+  }
+
+  if (raw?.responsible && typeof raw.responsible === "object") {
+    for (const key of Object.keys(raw.responsible)) {
+      if (isStaffTaskId(key)) {
+        ids.add(key);
+      }
+    }
+  }
+
+  return [...ids];
+}
+
 export function sanitizePlanning(raw: unknown): StaffPlanning {
   const planning = emptyPlanning();
   if (!raw || typeof raw !== "object") {
@@ -99,7 +118,7 @@ export function sanitizePlanning(raw: unknown): StaffPlanning {
 
   const data = raw as Partial<StaffPlanning>;
 
-  for (const taskId of staffTaskIds) {
+  for (const taskId of collectTaskIds(data)) {
     const need = data.needed?.[taskId] ?? {};
     const allowed = allowedDayIds(taskId);
     planning.needed[taskId] = Object.fromEntries(
@@ -108,7 +127,7 @@ export function sanitizePlanning(raw: unknown): StaffPlanning {
   }
 
   if (data.responsible && typeof data.responsible === "object") {
-    for (const taskId of staffTaskIds) {
+    for (const taskId of collectTaskIds(data)) {
       const userId = data.responsible[taskId];
       if (typeof userId === "string" && userId.trim()) {
         planning.responsible[taskId] = userId;
@@ -241,6 +260,20 @@ export function formatFill(needed: number | null, assigned: number) {
   return `${assigned} / ${needed}`;
 }
 
+export function ensureTaskNeed(planning: StaffPlanning, taskId: StaffTaskId): StaffPlanning {
+  if (planning.needed[taskId]) {
+    return planning;
+  }
+
+  return {
+    ...planning,
+    needed: {
+      ...planning.needed,
+      [taskId]: emptyNeed(taskId),
+    },
+  };
+}
+
 export function setNeededCount(
   planning: StaffPlanning,
   taskId: StaffTaskId,
@@ -252,7 +285,7 @@ export function setNeededCount(
     needed: {
       ...planning.needed,
       [taskId]: {
-        ...planning.needed[taskId],
+        ...(planning.needed[taskId] ?? emptyNeed(taskId)),
         [day]: value,
       },
     },
@@ -304,7 +337,9 @@ export function clearResponsibleIf(
 }
 
 export function leadsForUser(planning: StaffPlanning, userId: string): StaffTaskId[] {
-  return festivalTaskIds.filter((taskId) => planning.responsible[taskId] === userId);
+  return Object.entries(planning.responsible)
+    .filter((entry): entry is [StaffTaskId, string] => entry[1] === userId && isFestivalTask(entry[0]))
+    .map(([taskId]) => taskId);
 }
 
 export function attendanceEntriesForUser(planning: StaffPlanning, userId: string): HalfDayId[][] {

@@ -112,17 +112,31 @@ function forgetRemovedEmail(email: string) {
   writeRemovedEmails(emails);
 }
 
+function isSeedAdmin(user: { id: string; email: string }) {
+  return user.id === "yves" || isAdminEmail(user.email);
+}
+
 function mergeMissingDefaults(stored: AppUser[]): AppUser[] {
   const removed = readRemovedEmails();
   const emails = new Set(stored.map((user) => user.email.toLowerCase()));
   const ids = new Set(stored.map((user) => user.id));
+  const hasAdmin = stored.some((user) => user.kind === "admin" || isAdminEmail(user.email));
   const extra = defaultUsers
-    .filter(
-      (user) =>
-        !ids.has(user.id) &&
-        !emails.has(user.email.toLowerCase()) &&
-        !removed.has(user.email.toLowerCase()),
-    )
+    .filter((user) => {
+      if (ids.has(user.id) || emails.has(user.email.toLowerCase())) {
+        return false;
+      }
+
+      if (removed.has(user.email.toLowerCase())) {
+        return false;
+      }
+
+      if (hasAdmin && isSeedAdmin(user)) {
+        return false;
+      }
+
+      return true;
+    })
     .map(normalizeUser);
 
   return extra.length === 0 ? stored : [...stored, ...extra];
@@ -200,9 +214,14 @@ function mergeDirectory(users: AppUser[], people: DirectoryPerson[]): AppUser[] 
     );
   }
 
+  const hasAdmin = merged.some((user) => user.kind === "admin" || isAdminEmail(user.email));
   for (const user of users) {
     const email = user.email.toLowerCase();
     if (seen.has(email) || removed.has(email) || !isDefaultUser(user)) {
+      continue;
+    }
+
+    if (hasAdmin && isSeedAdmin(user)) {
       continue;
     }
 
@@ -475,7 +494,14 @@ export function UsersProvider({ children }: { children: ReactNode }) {
         const canManage =
           actor?.kind === "admin" || Boolean(actor?.modules.includes("medewerkers"));
 
-        if (!actor || !target || !canManage || target.id === sessionUserId || target.kind === "admin") {
+        if (
+          !actor ||
+          !target ||
+          !canManage ||
+          target.id === sessionUserId ||
+          target.email.toLowerCase() === actor.email.toLowerCase() ||
+          (target.kind === "admin" && actor.kind !== "admin")
+        ) {
           return { error: "Deze persoon kan niet verwijderd worden." };
         }
 
