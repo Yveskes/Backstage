@@ -1,9 +1,15 @@
 import {
   afbouwDayIds,
   festivalTaskIds,
+  halfDayIds,
+  isBuildTask,
+  isOpbouwDayId,
+  isAfbouwDayId,
   opbouwDayIds,
   staffTaskIds,
   type AfbouwDayId,
+  type BuildTaskId,
+  type HalfDayId,
   type OpbouwDayId,
   type PlanningDayId,
   type StaffTaskId,
@@ -14,6 +20,7 @@ export type NeedMap = Record<string, number | null>;
 export type StaffPlanning = {
   needed: Record<StaffTaskId, NeedMap>;
   responsible: Partial<Record<StaffTaskId, string>>;
+  attendance: Record<string, HalfDayId[]>;
 };
 
 export const PLANNING_KEY = "backstage.staffPlanning";
@@ -34,6 +41,7 @@ export function daysForTask(taskId: StaffTaskId): { id: string; label: string }[
       { id: "sunday", label: "Zondag" },
       { id: "monday", label: "Maandag" },
       { id: "tuesday", label: "Dinsdag" },
+      { id: "wednesday", label: "Woensdag" },
     ];
   }
 
@@ -54,6 +62,7 @@ export function emptyPlanning(): StaffPlanning {
       NeedMap
     >,
     responsible: {},
+    attendance: {},
   };
 }
 
@@ -107,7 +116,113 @@ export function sanitizePlanning(raw: unknown): StaffPlanning {
     }
   }
 
+  planning.attendance = sanitizeAttendance(data.attendance);
+
   return planning;
+}
+
+export function attendanceKey(kind: BuildTaskId, day: string, userId: string) {
+  return `${kind}:${day}:${userId}`;
+}
+
+function parseAttendanceKey(key: string) {
+  const [kind, day, ...rest] = key.split(":");
+  const userId = rest.join(":");
+  if (!isBuildTask(kind) || !userId) {
+    return null;
+  }
+
+  if (kind === "opbouw" && !isOpbouwDayId(day)) {
+    return null;
+  }
+
+  if (kind === "afbouw" && !isAfbouwDayId(day)) {
+    return null;
+  }
+
+  return { kind, day, userId };
+}
+
+function sanitizeHalves(raw: unknown): HalfDayId[] {
+  const values = Array.isArray(raw) ? raw : [];
+  return halfDayIds.filter((id) => values.includes(id));
+}
+
+function sanitizeAttendance(raw: unknown): Record<string, HalfDayId[]> {
+  if (!raw || typeof raw !== "object") {
+    return {};
+  }
+
+  const attendance: Record<string, HalfDayId[]> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const parsed = parseAttendanceKey(key);
+    const halves = sanitizeHalves(value);
+    if (!parsed || halves.length === 0) {
+      continue;
+    }
+
+    attendance[attendanceKey(parsed.kind, parsed.day, parsed.userId)] = halves;
+  }
+
+  return attendance;
+}
+
+export function halvesFor(
+  planning: StaffPlanning,
+  kind: BuildTaskId,
+  day: string,
+  userId: string,
+): HalfDayId[] {
+  return sanitizeHalves(planning.attendance[attendanceKey(kind, day, userId)]);
+}
+
+export function toggleBuildHalf(
+  planning: StaffPlanning,
+  kind: BuildTaskId,
+  day: string,
+  userId: string,
+  half: HalfDayId,
+): StaffPlanning {
+  const key = attendanceKey(kind, day, userId);
+  const current = halvesFor(planning, kind, day, userId);
+  const next = current.includes(half) ? current.filter((entry) => entry !== half) : [...current, half];
+  const attendance = { ...planning.attendance };
+
+  if (next.length === 0) {
+    delete attendance[key];
+  } else {
+    attendance[key] = sanitizeHalves(next);
+  }
+
+  return { ...planning, attendance };
+}
+
+export function clearBuildAttendance(
+  planning: StaffPlanning,
+  userId: string,
+  kind?: BuildTaskId,
+  day?: string,
+): StaffPlanning {
+  const attendance = { ...planning.attendance };
+
+  for (const key of Object.keys(attendance)) {
+    const parsed = parseAttendanceKey(key);
+    if (!parsed || parsed.userId !== userId) {
+      continue;
+    }
+
+    if (kind && parsed.kind !== kind) {
+      continue;
+    }
+
+    if (day && parsed.day !== day) {
+      continue;
+    }
+
+    delete attendance[key];
+  }
+
+  return { ...planning, attendance };
 }
 
 export function isPostUnderfilled(needed: number | null, assigned: number) {
@@ -189,11 +304,22 @@ export function clearResponsibleIf(
 }
 
 export function leadsForUser(planning: StaffPlanning, userId: string): StaffTaskId[] {
-  return staffTaskIds.filter((taskId) => planning.responsible[taskId] === userId);
+  return festivalTaskIds.filter((taskId) => planning.responsible[taskId] === userId);
 }
 
-export function festivalTaskList(): StaffTaskId[] {
-  return [...festivalTaskIds];
+export function attendanceEntriesForUser(planning: StaffPlanning, userId: string): HalfDayId[][] {
+  const entries: HalfDayId[][] = [];
+
+  for (const key of Object.keys(planning.attendance)) {
+    const parsed = parseAttendanceKey(key);
+    if (!parsed || parsed.userId !== userId) {
+      continue;
+    }
+
+    entries.push(halvesFor(planning, parsed.kind, parsed.day, parsed.userId));
+  }
+
+  return entries;
 }
 
 export type { OpbouwDayId, AfbouwDayId, PlanningDayId };

@@ -21,7 +21,7 @@ export const navigation: NavItem[] = [
       {
         href: "/medewerkers/planning",
         label: "Planning",
-        description: "Wie werkt wanneer en hoeveel mensen per post.",
+        description: "Wie werkt wanneer, aanwezigheid en vergoedingen.",
         module: "medewerkers",
       },
       {
@@ -73,8 +73,28 @@ export const navigation: NavItem[] = [
   {
     href: "/media",
     label: "Media",
-    description: "Logo's, brandbook, foto's en downloadbare assets.",
+    description: "Foto's, video's en brandbook.",
     module: "media",
+    children: [
+      {
+        href: "/media/foto",
+        label: "Foto",
+        description: "Foto's en beeldmateriaal.",
+        module: "media",
+      },
+      {
+        href: "/media/video",
+        label: "Video",
+        description: "Video's en bewegend beeld.",
+        module: "media",
+      },
+      {
+        href: "/media/brandbook",
+        label: "Brandbook",
+        description: "Huisstijl, logo's en merkrichtlijnen.",
+        module: "media",
+      },
+    ],
   },
   {
     href: "/sponsoring",

@@ -134,7 +134,7 @@ function MenuModulesEditor({
 export default function MedewerkerDetailPage() {
   const params = useParams<{ userId: string }>();
   const { users, currentUser, sessionUser, updateUser, removeUser, setCurrentUserId } = useUsers();
-  const { planning, toggleLead, clearLeadIf } = useStaffPlanning();
+  const { planning, toggleLead, clearLeadIf, clearAttendance } = useStaffPlanning();
   const router = useRouter();
   const user = users.find((entry) => entry.id === params.userId);
   const [leadError, setLeadError] = useState<string | null>(null);
@@ -163,11 +163,17 @@ export default function MedewerkerDetailPage() {
 
     if (selected) {
       clearLeadIf(taskId, person.id);
+      if (taskId === "opbouw" || taskId === "afbouw") {
+        clearAttendance(person.id, taskId);
+      }
     }
     setLeadError(null);
   }
 
   function handleToggleLead(taskId: StaffTaskId) {
+    if (!isFestivalTask(taskId)) {
+      return;
+    }
     const result = toggleLead(taskId, person.id);
     if (result.ok) {
       setLeadError(null);
@@ -253,7 +259,7 @@ export default function MedewerkerDetailPage() {
           })}
         </div>
 
-        {person.tasks.length > 0 ? (
+        {person.tasks.some(isFestivalTask) ? (
           <div className="mt-6 space-y-2">
             <h3 className="text-sm font-semibold text-zinc-900">Verantwoordelijke</h3>
             <p className="text-sm text-zinc-500">
@@ -264,7 +270,7 @@ export default function MedewerkerDetailPage() {
                 {leadError}
               </p>
             ) : null}
-            {person.tasks.map((taskId) => {
+            {person.tasks.filter(isFestivalTask).map((taskId) => {
               const task = staffTaskOptions.find((option) => option.id === taskId);
               const isLead = planning.responsible[taskId] === person.id;
 
@@ -313,9 +319,12 @@ export default function MedewerkerDetailPage() {
                     key={day.id}
                     type="button"
                     disabled={!canManage}
-                    onClick={() =>
-                      updateUser(person.id, { opbouwDays: toggleId(person.opbouwDays, day.id) })
-                    }
+                    onClick={() => {
+                      updateUser(person.id, { opbouwDays: toggleId(person.opbouwDays, day.id) });
+                      if (selected) {
+                        clearAttendance(person.id, "opbouw", day.id);
+                      }
+                    }}
                     className={`rounded-full px-3 py-1.5 text-sm ${
                       selected
                         ? "bg-zinc-900 text-white"
@@ -333,7 +342,7 @@ export default function MedewerkerDetailPage() {
         {person.tasks.includes("afbouw") ? (
           <>
             <h3 className="mt-6 text-sm font-semibold text-zinc-900">Afbouw</h3>
-            <p className="mt-1 text-sm text-zinc-500">Zondag tot dinsdag.</p>
+            <p className="mt-1 text-sm text-zinc-500">Zondag tot woensdag.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {afbouwDayOptions.map((day) => {
                 const selected = person.afbouwDays.includes(day.id);
@@ -343,9 +352,12 @@ export default function MedewerkerDetailPage() {
                     key={day.id}
                     type="button"
                     disabled={!canManage}
-                    onClick={() =>
-                      updateUser(person.id, { afbouwDays: toggleId(person.afbouwDays, day.id) })
-                    }
+                    onClick={() => {
+                      updateUser(person.id, { afbouwDays: toggleId(person.afbouwDays, day.id) });
+                      if (selected) {
+                        clearAttendance(person.id, "afbouw", day.id);
+                      }
+                    }}
                     className={`rounded-full px-3 py-1.5 text-sm ${
                       selected
                         ? "bg-zinc-900 text-white"

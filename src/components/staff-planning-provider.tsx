@@ -11,14 +11,16 @@ import {
 } from "react";
 import {
   PLANNING_KEY,
+  clearBuildAttendance,
   clearResponsibleIf,
   emptyPlanning,
   sanitizePlanning,
   setNeededCount,
+  toggleBuildHalf,
   toggleResponsible,
   type StaffPlanning,
 } from "@/lib/staff-planning";
-import type { StaffTaskId } from "@/lib/staff-tasks";
+import type { BuildTaskId, HalfDayId, StaffTaskId } from "@/lib/staff-tasks";
 
 type ToggleResult = { ok: true } | { ok: false; holderId: string };
 
@@ -28,6 +30,8 @@ type StaffPlanningContextValue = {
   setNeed: (taskId: StaffTaskId, day: string, value: number | null) => void;
   toggleLead: (taskId: StaffTaskId, userId: string) => ToggleResult;
   clearLeadIf: (taskId: StaffTaskId, userId: string) => void;
+  toggleHalf: (kind: BuildTaskId, day: string, userId: string, half: HalfDayId) => void;
+  clearAttendance: (userId: string, kind?: BuildTaskId, day?: string) => void;
 };
 
 const StaffPlanningContext = createContext<StaffPlanningContextValue | null>(null);
@@ -75,9 +79,17 @@ export function StaffPlanningProvider({ children }: { children: ReactNode }) {
     setPlanning((current) => clearResponsibleIf(current, taskId, userId));
   }, []);
 
+  const toggleHalf = useCallback((kind: BuildTaskId, day: string, userId: string, half: HalfDayId) => {
+    setPlanning((current) => toggleBuildHalf(current, kind, day, userId, half));
+  }, []);
+
+  const clearAttendance = useCallback((userId: string, kind?: BuildTaskId, day?: string) => {
+    setPlanning((current) => clearBuildAttendance(current, userId, kind, day));
+  }, []);
+
   const value = useMemo(
-    () => ({ planning, ready, setNeed, toggleLead, clearLeadIf }),
-    [clearLeadIf, planning, ready, setNeed, toggleLead],
+    () => ({ planning, ready, setNeed, toggleLead, clearLeadIf, toggleHalf, clearAttendance }),
+    [clearAttendance, clearLeadIf, planning, ready, setNeed, toggleHalf, toggleLead],
   );
 
   return <StaffPlanningContext.Provider value={value}>{children}</StaffPlanningContext.Provider>;

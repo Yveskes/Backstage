@@ -27,6 +27,25 @@ export const festivalTaskOptions = staffTaskOptions.filter((task) =>
   festivalTaskIds.includes(task.id as FestivalTaskId),
 );
 
+export const buildTaskIds = ["opbouw", "afbouw"] as const;
+export type BuildTaskId = (typeof buildTaskIds)[number];
+
+export const halfDayIds = ["am", "pm"] as const;
+export type HalfDayId = (typeof halfDayIds)[number];
+
+export const halfDayOptions: { id: HalfDayId; label: string }[] = [
+  { id: "am", label: "VM" },
+  { id: "pm", label: "NM" },
+];
+
+export function isBuildTask(value: unknown): value is BuildTaskId {
+  return buildTaskIds.includes(value as BuildTaskId);
+}
+
+export function isHalfDayId(value: unknown): value is HalfDayId {
+  return halfDayIds.includes(value as HalfDayId);
+}
+
 export const staffDayIds = ["friday", "saturday", "both"] as const;
 
 export type StaffDayId = (typeof staffDayIds)[number];
@@ -48,13 +67,14 @@ export const opbouwDayOptions: { id: OpbouwDayId; label: string }[] = [
   { id: "friday", label: "Vrijdag" },
 ];
 
-export const afbouwDayIds = ["sunday", "monday", "tuesday"] as const;
+export const afbouwDayIds = ["sunday", "monday", "tuesday", "wednesday"] as const;
 export type AfbouwDayId = (typeof afbouwDayIds)[number];
 
 export const afbouwDayOptions: { id: AfbouwDayId; label: string }[] = [
   { id: "sunday", label: "Zondag" },
   { id: "monday", label: "Maandag" },
   { id: "tuesday", label: "Dinsdag" },
+  { id: "wednesday", label: "Woensdag" },
 ];
 
 export type PlanningDayId = "friday" | "saturday";

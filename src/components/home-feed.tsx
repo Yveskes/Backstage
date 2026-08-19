@@ -1,6 +1,5 @@
 "use client";
 
-import { DashboardModules } from "@/components/dashboard-modules";
 import { ExpenseClaims } from "@/components/expense-claims";
 import { NotificationList } from "@/components/notification-card";
 import { PageHeader } from "@/components/page-header";
@@ -9,24 +8,8 @@ import { useNotifications } from "@/components/notifications-provider";
 import { useUsers } from "@/components/users-provider";
 import { firstNameOf } from "@/lib/permissions";
 import { formatStaffTasks, formatUserSchedule } from "@/lib/staff-tasks";
-import type { ConnectionTestResult } from "@/lib/supabase/test-connection";
 
-const statusStyles: Record<string, string> = {
-  ok: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  rls_blocked: "border-amber-200 bg-amber-50 text-amber-800",
-  migration_pending: "border-orange-200 bg-orange-50 text-orange-800",
-  key_error: "border-red-200 bg-red-50 text-red-800",
-  config_error: "border-red-200 bg-red-50 text-red-800",
-  error: "border-red-200 bg-red-50 text-red-800",
-};
-
-export function HomeFeed({
-  showModules = false,
-  connection,
-}: {
-  showModules?: boolean;
-  connection?: ConnectionTestResult;
-}) {
+export function HomeFeed() {
   const { currentUser } = useUsers();
   const { notifications } = useNotifications();
   const shiftLabel =
@@ -62,22 +45,6 @@ export function HomeFeed({
           <NotificationList items={notifications} />
         )}
       </section>
-
-      {showModules ? (
-        <section className="mb-8">
-          <h2 className="mb-3 text-lg font-semibold tracking-tight text-zinc-900">Onderdelen</h2>
-          <DashboardModules />
-        </section>
-      ) : null}
-
-      {connection ? (
-        <section
-          className={`rounded-2xl border px-5 py-4 text-sm ${statusStyles[connection.status] ?? statusStyles.error}`}
-        >
-          <p className="font-medium">Supabase</p>
-          <p className="mt-1">{connection.message}</p>
-        </section>
-      ) : null}
     </>
   );
 }

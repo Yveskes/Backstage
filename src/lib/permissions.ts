@@ -45,7 +45,7 @@ export const moduleOptions: ModuleOption[] = [
   {
     id: "media",
     label: "Media",
-    description: "Logo's, foto's en downloads.",
+    description: "Foto's, video's en brandbook.",
   },
   {
     id: "sponsoring",
