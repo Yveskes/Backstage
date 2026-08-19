@@ -40,7 +40,7 @@ export const moduleOptions: ModuleOption[] = [
   {
     id: "documenten",
     label: "Documenten",
-    description: "Documenten bekijken en uploaden.",
+    description: "Bestanden uit Google Drive bekijken en downloaden.",
   },
   {
     id: "media",

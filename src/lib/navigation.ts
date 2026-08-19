@@ -67,7 +67,7 @@ export const navigation: NavItem[] = [
   {
     href: "/documenten",
     label: "Documenten",
-    description: "Centrale mappen met versies per festivaljaar.",
+    description: "Bestanden uit Google Drive, per festivaljaar.",
     module: "documenten",
   },
   {
