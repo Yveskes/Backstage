@@ -189,7 +189,7 @@ export default function MedewerkerDetailPage() {
     updateUser(person.id, { days: person.days === days ? null : days });
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     const confirmed = window.confirm(
       `${person.fullName} verwijderen? Deze persoon verdwijnt uit de lijst.`,
     );
@@ -197,9 +197,13 @@ export default function MedewerkerDetailPage() {
       return;
     }
 
-    if (removeUser(person.id)) {
-      router.push("/medewerkers");
+    const result = await removeUser(person.id);
+    if (result.error) {
+      window.alert(result.error);
+      return;
     }
+
+    router.push("/medewerkers");
   }
 
   return (

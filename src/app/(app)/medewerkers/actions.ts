@@ -241,3 +241,72 @@ export async function saveUserModules(
 
   return {};
 }
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+export async function deleteDirectoryPerson(email: string): Promise<{ error?: string }> {
+  const actorEmail = await requireSessionEmail();
+  if (!actorEmail) {
+    return { error: "Je bent niet ingelogd." };
+  }
+
+  const target = email.trim().toLowerCase();
+  if (!target) {
+    return { error: "Deze persoon heeft geen e-mailadres." };
+  }
+
+  if (target === actorEmail || isAdminEmail(target)) {
+    return { error: "Deze persoon kan niet verwijderd worden." };
+  }
+
+  const admin = createAdminClient();
+  const session = await createSessionClient();
+  const client = admin ?? session;
+  const { data: viewer } = await client
+    .from("profiles")
+    .select("user_kind, modules")
+    .eq("email", actorEmail)
+    .maybeSingle();
+  const canManage =
+    isAdminEmail(actorEmail) ||
+    viewer?.user_kind === "admin" ||
+    sanitizeModules(viewer?.modules).includes("medewerkers");
+
+  if (!canManage) {
+    return { error: "Geen toegang om mensen te verwijderen." };
+  }
+
+  const { error: inviteError } = await client.from("invites").delete().eq("email", target);
+  if (inviteError) {
+    return { error: "Uitnodiging verwijderen is mislukt." };
+  }
+
+  const { data: profile } = await client
+    .from("profiles")
+    .select("id, user_kind")
+    .eq("email", target)
+    .maybeSingle();
+
+  if (profile?.user_kind === "admin") {
+    return { error: "Admin kan niet verwijderd worden." };
+  }
+
+  if (profile?.id && isUuid(String(profile.id)) && admin) {
+    const { error } = await admin.auth.admin.deleteUser(String(profile.id));
+    if (error) {
+      return { error: "Account verwijderen in Supabase is mislukt." };
+    }
+  }
+
+  const { error: profileError } = await client.from("profiles").delete().eq("email", target);
+  if (profileError) {
+    const { data: stillThere } = await client.from("profiles").select("id").eq("email", target).maybeSingle();
+    if (stillThere) {
+      return { error: "Verwijderen in de database is mislukt." };
+    }
+  }
+
+  return {};
+}

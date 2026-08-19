@@ -14,7 +14,6 @@ import {
   type StaffTaskId,
 } from "@/lib/staff-tasks";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 function isBestuur(user: AppUser) {
@@ -120,9 +119,8 @@ function UserList({
   users: AppUser[];
   sessionUserId: string;
   canManage: boolean;
-  onRemove: (id: string) => boolean;
+  onRemove: (id: string) => Promise<{ error?: string }>;
 }) {
-  const router = useRouter();
   const { planning } = useStaffPlanning();
 
   return (
@@ -211,10 +209,15 @@ function UserList({
                             const confirmed = window.confirm(
                               `${user.fullName} verwijderen? Deze persoon verdwijnt uit de lijst.`,
                             );
-                            if (confirmed) {
-                              onRemove(user.id);
-                              router.refresh();
+                            if (!confirmed) {
+                              return;
                             }
+
+                            void onRemove(user.id).then((result) => {
+                              if (result.error) {
+                                window.alert(result.error);
+                              }
+                            });
                           }}
                         >
                           <TrashIcon className="h-4 w-4" />

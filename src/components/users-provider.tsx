@@ -1,6 +1,6 @@
 "use client";
 
-import { loadDirectoryPeople, type DirectoryPerson } from "@/app/(app)/medewerkers/actions";
+import { loadDirectoryPeople, deleteDirectoryPerson, type DirectoryPerson } from "@/app/(app)/medewerkers/actions";
 import { isAdminEmail } from "@/lib/admins";
 import { defaultUsers } from "@/lib/users";
 import { createNewUser, defaultTshirtSize, isUsablePersonName, joinName, sanitizeDays, sanitizeModules, sanitizeTasks, splitName, type AppUser } from "@/lib/permissions";
@@ -20,6 +20,7 @@ import {
 const USERS_KEY = "backstage.users";
 const VIEW_AS_KEY = "backstage.viewAsUserId";
 const TSHIRT_NOTICES_KEY = "backstage.tshirtNotices";
+const REMOVED_EMAILS_KEY = "backstage.removedEmails";
 
 export type TshirtNotice = {
   id: string;
@@ -42,7 +43,7 @@ type UsersContextValue = {
   updateUser: (id: string, patch: Partial<AppUser>) => void;
   addUser: (user: AppUser) => void;
   refreshDirectory: () => Promise<void>;
-  removeUser: (id: string) => boolean;
+  removeUser: (id: string) => Promise<{ error?: string }>;
   confirmTshirt: (id: string, size: TshirtSize) => void;
 };
 
@@ -77,11 +78,51 @@ function normalizeUser(user: Partial<AppUser> & { fullName?: string; email?: str
   };
 }
 
+function readRemovedEmails(): Set<string> {
+  if (typeof window === "undefined") {
+    return new Set();
+  }
+
+  try {
+    const raw = window.localStorage.getItem(REMOVED_EMAILS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    if (!Array.isArray(parsed)) {
+      return new Set();
+    }
+
+    return new Set(parsed.map((email) => String(email).toLowerCase()).filter(Boolean));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeRemovedEmails(emails: Set<string>) {
+  window.localStorage.setItem(REMOVED_EMAILS_KEY, JSON.stringify([...emails]));
+}
+
+function rememberRemovedEmail(email: string) {
+  const emails = readRemovedEmails();
+  emails.add(email.toLowerCase());
+  writeRemovedEmails(emails);
+}
+
+function forgetRemovedEmail(email: string) {
+  const emails = readRemovedEmails();
+  emails.delete(email.toLowerCase());
+  writeRemovedEmails(emails);
+}
+
 function mergeMissingDefaults(stored: AppUser[]): AppUser[] {
+  const removed = readRemovedEmails();
   const emails = new Set(stored.map((user) => user.email.toLowerCase()));
   const ids = new Set(stored.map((user) => user.id));
   const extra = defaultUsers
-    .filter((user) => !ids.has(user.id) && !emails.has(user.email.toLowerCase()))
+    .filter(
+      (user) =>
+        !ids.has(user.id) &&
+        !emails.has(user.email.toLowerCase()) &&
+        !removed.has(user.email.toLowerCase()),
+    )
     .map(normalizeUser);
 
   return extra.length === 0 ? stored : [...stored, ...extra];
@@ -94,13 +135,13 @@ function readUsers(): AppUser[] {
 
   const raw = window.localStorage.getItem(USERS_KEY);
   if (!raw) {
-    return defaultUsers.map(normalizeUser);
+    return mergeMissingDefaults([]);
   }
 
   try {
     const parsed = JSON.parse(raw) as Array<Partial<AppUser>>;
     if (!Array.isArray(parsed) || parsed.length === 0) {
-      return defaultUsers.map(normalizeUser);
+      return mergeMissingDefaults([]);
     }
 
     return mergeMissingDefaults(parsed.map(normalizeUser));
@@ -121,9 +162,15 @@ function pickName(fromDb: string, fromLocal: string | undefined, email: string) 
   return fromDb;
 }
 
+function isDefaultUser(user: AppUser) {
+  const email = user.email.toLowerCase();
+  return defaultUsers.some((entry) => entry.id === user.id || entry.email.toLowerCase() === email);
+}
+
 function mergeDirectory(users: AppUser[], people: DirectoryPerson[]): AppUser[] {
+  const removed = readRemovedEmails();
   if (people.length === 0) {
-    return users;
+    return users.filter((user) => !removed.has(user.email.toLowerCase()));
   }
 
   const localByEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]));
@@ -154,9 +201,12 @@ function mergeDirectory(users: AppUser[], people: DirectoryPerson[]): AppUser[] 
   }
 
   for (const user of users) {
-    if (!seen.has(user.email.toLowerCase())) {
-      merged.push(user);
+    const email = user.email.toLowerCase();
+    if (seen.has(email) || removed.has(email) || !isDefaultUser(user)) {
+      continue;
     }
+
+    merged.push(user);
   }
 
   return merged;
@@ -394,6 +444,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
         });
       },
       addUser(user) {
+        forgetRemovedEmail(user.email);
         setUsers((current) => {
           if (current.some((entry) => entry.email.toLowerCase() === user.email.toLowerCase())) {
             return current;
@@ -418,21 +469,31 @@ export function UsersProvider({ children }: { children: ReactNode }) {
         });
       },
       refreshDirectory,
-      removeUser(id) {
+      async removeUser(id) {
         const actor = users.find((user) => user.id === sessionUserId);
         const target = users.find((user) => user.id === id);
         const canManage =
           actor?.kind === "admin" || Boolean(actor?.modules.includes("medewerkers"));
 
         if (!actor || !target || !canManage || target.id === sessionUserId || target.kind === "admin") {
-          return false;
+          return { error: "Deze persoon kan niet verwijderd worden." };
         }
 
-        setUsers((current) => current.filter((user) => user.id !== id));
+        const result = await deleteDirectoryPerson(target.email);
+        if (result.error) {
+          return result;
+        }
+
+        rememberRemovedEmail(target.email);
+        setUsers((current) =>
+          current.filter(
+            (user) => user.id !== id && user.email.toLowerCase() !== target.email.toLowerCase(),
+          ),
+        );
         if (viewAsUserId === id) {
           setViewAsUserId(null);
         }
-        return true;
+        return {};
       },
       confirmTshirt(id, size) {
         const target = users.find((user) => user.id === id);
