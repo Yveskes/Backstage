@@ -20,13 +20,19 @@ export const metadata: Metadata = {
   description: "Festivalbeheer voor documenten, team, sponsors en planning.",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
+};
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="nl"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full overflow-x-clip antialiased`}
     >
-      <body className="min-h-dvh bg-zinc-100 font-sans text-zinc-900">
+      <body className="min-h-dvh overflow-x-clip bg-zinc-100 font-sans text-zinc-900">
         {children}
       </body>
     </html>

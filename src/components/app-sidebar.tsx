@@ -28,16 +28,16 @@ export function AppSidebar() {
 
   return (
     <>
-      <header className="relative z-30 flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950 px-4 py-3 lg:hidden">
-        <Link href={home} className="text-sm font-semibold tracking-wide text-white">
+      <header className="relative z-30 flex min-w-0 items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-950 px-4 py-3 lg:hidden">
+        <Link href={home} className="shrink-0 text-sm font-semibold tracking-wide text-white">
           Backstage
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
           <HeaderActions variant="dark" />
           <button
             type="button"
             onClick={() => setOpen((value) => !value)}
-            className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200"
+            className="shrink-0 rounded-md border border-zinc-700 px-2.5 py-1.5 text-sm text-zinc-200"
             aria-expanded={open}
             aria-controls="app-sidebar"
           >

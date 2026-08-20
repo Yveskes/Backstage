@@ -126,8 +126,8 @@ function UserList({
   const { planning } = useStaffPlanning();
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
-      <table className="w-full text-left text-sm">
+    <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
+      <table className="w-full min-w-[40rem] text-left text-sm">
         <thead className="border-b border-zinc-200 bg-zinc-50 text-zinc-500">
           <tr>
             <th className="px-4 py-3 font-medium">Naam</th>

@@ -42,7 +42,7 @@ export function BuildRewardPills({
           reward.combiTicket ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"
         }`}
       >
-        {reward.combiTicket ? "Combiticket" : `Geen combiticket (${reward.days}/${COMBI_DAYS})`}
+        {reward.combiTicket ? "Combiticket" : `Nog geen combi (${reward.days}/${COMBI_DAYS})`}
       </p>
     </div>
   );

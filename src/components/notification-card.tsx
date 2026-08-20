@@ -29,7 +29,7 @@ export function NotificationCard({
   const dotClass = important ? "bg-red-500" : item.unread ? "bg-amber-500" : "";
 
   return (
-    <article className="rounded border border-zinc-200 bg-zinc-50 px-3 py-2">
+    <article className="min-w-0 overflow-hidden rounded border border-zinc-200 bg-zinc-50 px-3 py-2">
       <Link
         href={notificationPath(item.id)}
         onClick={() => {
@@ -44,9 +44,9 @@ export function NotificationCard({
           ) : (
             <span className="mt-1.5 h-1.5 w-1.5 shrink-0" aria-hidden="true" />
           )}
-          <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
             <div className="min-w-0 flex-1">
-              <h3 className="truncate text-sm font-semibold leading-5 text-zinc-900">{item.title}</h3>
+              <h3 className="text-sm font-semibold leading-5 text-zinc-900">{item.title}</h3>
               <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap text-xs leading-5 text-zinc-600">
                 {item.body.trim()}
               </p>
@@ -74,7 +74,7 @@ export function NotificationCard({
                 </p>
               ) : null}
             </div>
-            <p className="shrink-0 text-xs text-zinc-500">{item.time}</p>
+            <p className="shrink-0 text-xs leading-5 text-zinc-500 sm:text-right">{item.time}</p>
           </div>
         </div>
       </Link>

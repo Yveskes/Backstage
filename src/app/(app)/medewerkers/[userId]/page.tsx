@@ -67,7 +67,7 @@ function HalfDayPills({
   onToggle: (half: HalfDayId) => void;
 }) {
   return (
-    <div className="grid grid-cols-[6.25rem_6.25rem] gap-1">
+    <div className="grid min-w-0 flex-1 grid-cols-2 gap-1 sm:grid-cols-[6.25rem_6.25rem] sm:flex-none">
       {halfDayOptions.map((half) => {
         if (!availableHalves(kind, dayId).includes(half.id)) {
           return <div key={half.id} aria-hidden />;
@@ -401,7 +401,7 @@ export default function MedewerkerDetailPage() {
 
                   return (
                     <div key={taskId} className="space-y-1.5">
-                      <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
                         <h3 className="shrink-0 text-sm font-semibold text-zinc-900">
                           {task?.label ?? taskId}
                         </h3>
