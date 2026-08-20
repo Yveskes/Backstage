@@ -115,12 +115,6 @@ export function TshirtPicker() {
         </p>
       ) : (
         <>
-          <p className="mt-3 rounded border border-red-200 bg-white/70 px-3 py-2 text-sm text-red-900">
-            {twoDays
-              ? "Je helpt vrijdag én zaterdag, dus je krijgt een t-shirt per festivaldag. Opbouw en afbouw tellen niet mee. Je mag per dag een andere maat kiezen."
-              : "Bevestig je t-shirtmaat. Zolang je dat niet doet, blijft deze melding staan dat je t-shirt nog niet gekozen is. Opbouw en afbouw geven geen extra t-shirt."}
-          </p>
-
           {twoDays ? (
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div>

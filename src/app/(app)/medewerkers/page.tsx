@@ -1,6 +1,6 @@
 "use client";
 
-import { CrossIcon, CrownIcon, PencilIcon, TrashIcon } from "@/components/icons";
+import { CrossIcon, CrownIcon, PencilIcon, StarIcon, TrashIcon } from "@/components/icons";
 import { PageHeader } from "@/components/page-header";
 import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
@@ -8,7 +8,6 @@ import { canManageStaff, canRemoveDirectoryPerson, kindLabel, type AppUser } fro
 import { leadsForUser } from "@/lib/staff-planning";
 import {
   formatStaffTasks,
-  formatStaffTasksWithLead,
   formatUserSchedule,
   staffTaskOptionsFor,
   type StaffTaskId,
@@ -164,22 +163,19 @@ function UserList({
                       {bestuur ? (
                         <CrownIcon className="h-3.5 w-3.5 text-amber-600" />
                       ) : null}
+                      {leadIds.length > 0 ? (
+                        <StarIcon className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                      ) : null}
                       {user.fullName || user.email}
-                      {leadIds.length > 0 ? " *" : ""}
                     </Link>
                     <p className="text-xs text-zinc-500">{user.email}</p>
                     {user.invitePending ? (
                       <p className="mt-1 text-xs text-amber-700">Uitnodiging nog open</p>
                     ) : null}
-                    {leadIds.length > 0 ? (
-                      <p className="mt-1 text-xs text-zinc-700">
-                        * Verantwoordelijke {formatStaffTasks(leadIds)}
-                      </p>
-                    ) : null}
                   </td>
                   <td className="px-4 py-3 text-zinc-600">{kindLabel[user.kind]}</td>
                   <td className="px-4 py-3 text-zinc-600">
-                    {user.tasks.length > 0 ? formatStaffTasksWithLead(user.tasks, leadIds) : "—"}
+                    {user.tasks.length > 0 ? formatStaffTasks(user.tasks) : "—"}
                   </td>
                   <td className="px-4 py-3 text-zinc-600">{formatUserSchedule(user) || "—"}</td>
                   <td className="px-4 py-3">

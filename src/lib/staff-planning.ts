@@ -1,5 +1,7 @@
 import {
   afbouwDayIds,
+  availableHalves,
+  constrainHalves,
   halfDayIds,
   isBuildTask,
   isFestivalTask,
@@ -203,7 +205,10 @@ export function toggleBuildHalf(
   half: HalfDayId,
 ): StaffPlanning {
   const key = attendanceKey(kind, day, userId);
-  const current = halvesFor(planning, kind, day, userId);
+  const current = constrainHalves(kind, day, halvesFor(planning, kind, day, userId));
+  if (!availableHalves(kind, day).includes(half)) {
+    return planning;
+  }
   const next = current.includes(half) ? current.filter((entry) => entry !== half) : [...current, half];
   const attendance = { ...planning.attendance };
 

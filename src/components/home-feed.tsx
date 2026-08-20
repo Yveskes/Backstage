@@ -6,17 +6,14 @@ import { TshirtPicker } from "@/components/tshirt-picker";
 import { useNotifications } from "@/components/notifications-provider";
 import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
-import { rewardForUser } from "@/lib/build-rewards";
-import { canClaimExpenses, firstNameOf } from "@/lib/permissions";
-import { formatStaffTasks, formatUserSchedule } from "@/lib/staff-tasks";
+import { firstNameOf } from "@/lib/permissions";
+import { assignmentBlocks } from "@/lib/staff-tasks";
 
 export function HomeFeed() {
   const { currentUser } = useUsers();
   const { notifications } = useNotifications();
-  const shiftLabel =
-    currentUser.tasks.length > 0
-      ? `${formatStaffTasks(currentUser.tasks)} · ${formatUserSchedule(currentUser)}`
-      : null;
+  const { posts } = useStaffPlanning();
+  const tasks = assignmentBlocks(currentUser, posts);
 
   return (
     <>
@@ -27,12 +24,40 @@ export function HomeFeed() {
 
       <TshirtPicker />
 
-      <TeamPayoutLine />
-
-      {shiftLabel ? (
-        <section className="mb-6 rounded-2xl border border-zinc-200 bg-white px-5 py-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Jouw taak</p>
-          <p className="mt-1 text-sm font-medium text-zinc-900">{shiftLabel}</p>
+      {tasks.length > 0 ? (
+        <section className="mb-8">
+          <h2 className="mb-4 text-lg font-semibold tracking-tight text-zinc-900">Jouw taken</h2>
+          <div className="space-y-3">
+            {tasks.map((task) => (
+              <article key={task.id} className="rounded-2xl border border-zinc-200 bg-white px-5 py-4">
+                <h3 className="text-sm font-semibold text-zinc-900">{task.title}</h3>
+                {task.days.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {task.days.map((day) => (
+                      <span
+                        key={day}
+                        className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs text-zinc-700"
+                      >
+                        {day}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-zinc-500">Nog geen dag ingepland</p>
+                )}
+                <dl className="mt-3 space-y-2 text-sm leading-6 text-zinc-600">
+                  <div>
+                    <dt className="font-medium text-zinc-800">Wanneer</dt>
+                    <dd>{task.when}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-zinc-800">Taken</dt>
+                    <dd>{task.tasks}</dd>
+                  </div>
+                </dl>
+              </article>
+            ))}
+          </div>
         </section>
       ) : null}
 
@@ -47,28 +72,5 @@ export function HomeFeed() {
         )}
       </section>
     </>
-  );
-}
-
-function TeamPayoutLine() {
-  const { currentUser } = useUsers();
-  const { planning } = useStaffPlanning();
-
-  if (!canClaimExpenses(currentUser)) {
-    return null;
-  }
-
-  const reward = rewardForUser(planning, currentUser);
-  const tokens = `${reward.tokens} drankjeton${reward.tokens === 1 ? "" : "s"}`;
-  const combi = reward.combiTicket ? "combiticket" : "nog geen combiticket";
-
-  return (
-    <p className="mb-6 text-sm text-zinc-600">
-      <span className="font-medium text-zinc-800">Te ontvangen</span>
-      <span className="mx-2 text-zinc-300">·</span>
-      {tokens}
-      <span className="mx-2 text-zinc-300">·</span>
-      {combi}
-    </p>
   );
 }

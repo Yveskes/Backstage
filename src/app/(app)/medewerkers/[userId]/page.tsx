@@ -4,7 +4,8 @@ import { saveUserModules } from "@/app/(app)/medewerkers/actions";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { TrashIcon } from "@/components/icons";
+import { StarIcon, TrashIcon } from "@/components/icons";
+import { BuildRewardPills } from "@/components/build-reward-pills";
 import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
 import {
@@ -17,20 +18,76 @@ import {
   type AppUser,
   type ModuleId,
 } from "@/lib/permissions";
+import { halvesFor } from "@/lib/staff-planning";
 import {
   afbouwDayOptions,
+  clearFestivalPost,
+  festivalIncludesFriday,
+  festivalSchedulePatch,
+  availableHalves,
+  constrainHalves,
+  halfDayOptions,
   isFestivalTask,
   opbouwDayOptions,
-  staffDayOptions,
+  planningDayOptions,
   staffTaskOptionsFor,
-  toggleId,
-  type StaffDayId,
+  toggleFestivalPostDay,
+  withoutFestivalFriday,
+  worksOnDay,
+  type HalfDayId,
+  type OpbouwDayId,
+  type PlanningDayId,
   type StaffTaskId,
 } from "@/lib/staff-tasks";
-import { formatTshirtSizes, getsTshirtPerFestivalDay, hasConfirmedTshirt } from "@/lib/tshirts";
+import { formatTshirtSizes, hasConfirmedTshirt } from "@/lib/tshirts";
 
 function sameModules(a: ModuleId[], b: ModuleId[]) {
   return a.length === b.length && a.every((id) => b.includes(id));
+}
+
+function pillClass(selected: boolean) {
+  return `rounded-[4px] border px-2 py-0.5 text-xs ${
+    selected
+      ? "border-emerald-400 bg-emerald-200 font-medium text-emerald-950"
+      : "border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50"
+  } disabled:cursor-not-allowed disabled:opacity-60`;
+}
+
+function HalfDayPills({
+  kind,
+  dayId,
+  active,
+  canManage,
+  onToggle,
+}: {
+  kind: "opbouw" | "afbouw";
+  dayId: string;
+  active: HalfDayId[];
+  canManage: boolean;
+  onToggle: (half: HalfDayId) => void;
+}) {
+  return (
+    <div className="grid grid-cols-[6.25rem_6.25rem] gap-1">
+      {halfDayOptions.map((half) => {
+        if (!availableHalves(kind, dayId).includes(half.id)) {
+          return <div key={half.id} aria-hidden />;
+        }
+
+        return (
+          <button
+            key={half.id}
+            type="button"
+            disabled={!canManage}
+            title={half.id === "am" ? "Voormiddag" : "Namiddag"}
+            onClick={() => onToggle(half.id)}
+            className={`${pillClass(active.includes(half.id))} w-full text-center`}
+          >
+            {half.id === "am" ? "Voormiddag" : "Namiddag"}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function MenuModulesEditor({
@@ -86,37 +143,33 @@ function MenuModulesEditor({
 
   return (
     <>
-      <div className="mt-5 space-y-3">
+      <div className="mt-3 space-y-2">
         {moduleOptions.map((option) => {
           const checked = draft.includes(option.id);
 
           return (
             <label
               key={option.id}
-              className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 px-4 py-3"
+              className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-zinc-200 px-3 py-2"
             >
               <input
                 type="checkbox"
-                className="mt-1"
                 checked={checked}
                 disabled={!canEdit || saving}
                 onChange={() => toggle(option.id)}
               />
-              <span>
-                <span className="block text-sm font-medium text-zinc-900">{option.label}</span>
-                <span className="mt-0.5 block text-sm text-zinc-500">{option.description}</span>
-              </span>
+              <span className="text-sm font-medium text-zinc-900">{option.label}</span>
             </label>
           );
         })}
       </div>
       {canEdit && dirty ? (
-        <div className="mt-5 flex flex-wrap items-center gap-3">
+        <div className="mt-3 flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={() => void save()}
             disabled={saving}
-            className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+            className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
           >
             {saving ? "Opslaan..." : "Opslaan"}
           </button>
@@ -136,7 +189,7 @@ function MenuModulesEditor({
 export default function MedewerkerDetailPage() {
   const params = useParams<{ userId: string }>();
   const { users, currentUser, sessionUser, updateUser, removeUser, setCurrentUserId } = useUsers();
-  const { planning, posts, toggleLead, clearLeadIf, clearAttendance } = useStaffPlanning();
+  const { planning, posts, toggleLead, clearLeadIf, clearAttendance, toggleHalf } = useStaffPlanning();
   const router = useRouter();
   const user = users.find((entry) => entry.id === params.userId);
   const [leadError, setLeadError] = useState<string | null>(null);
@@ -154,23 +207,46 @@ export default function MedewerkerDetailPage() {
 
   function toggleTask(taskId: StaffTaskId) {
     const selected = person.tasks.includes(taskId);
-    const next = selected
-      ? person.tasks.filter((id) => id !== taskId)
-      : [...person.tasks, taskId];
+
+    if (isFestivalTask(taskId)) {
+      if (selected) {
+        const tasks = person.tasks.filter((id) => id !== taskId);
+        const byDay = clearFestivalPost(person.festivalByDay ?? {}, taskId);
+        updateUser(person.id, festivalSchedulePatch(tasks, byDay, person.opbouwDays));
+        clearLeadIf(taskId, person.id);
+      } else {
+        updateUser(person.id, {
+          tasks: [...person.tasks, taskId],
+        });
+      }
+      setLeadError(null);
+      return;
+    }
+
+    const nextTasks = selected ? person.tasks.filter((id) => id !== taskId) : [...person.tasks, taskId];
+    const opbouwDays = taskId === "opbouw" && selected ? [] : person.opbouwDays;
+    const afbouwDays = taskId === "afbouw" && selected ? [] : person.afbouwDays;
 
     updateUser(person.id, {
-      tasks: next,
-      opbouwDays: taskId === "opbouw" && selected ? [] : person.opbouwDays,
-      afbouwDays: taskId === "afbouw" && selected ? [] : person.afbouwDays,
+      tasks: nextTasks,
+      opbouwDays,
+      afbouwDays,
     });
 
     if (selected) {
-      clearLeadIf(taskId, person.id);
       if (taskId === "opbouw" || taskId === "afbouw") {
         clearAttendance(person.id, taskId);
       }
     }
     setLeadError(null);
+  }
+
+  function setFestivalDay(postId: StaffTaskId, day: PlanningDayId) {
+    const byDay = toggleFestivalPostDay(person.festivalByDay ?? {}, postId, day);
+    updateUser(person.id, festivalSchedulePatch(person.tasks, byDay, person.opbouwDays));
+    if (festivalIncludesFriday(byDay)) {
+      clearAttendance(person.id, "opbouw", "friday");
+    }
   }
 
   function handleToggleLead(taskId: StaffTaskId) {
@@ -188,8 +264,47 @@ export default function MedewerkerDetailPage() {
     setLeadError(`${holder?.fullName ?? "Iemand anders"} is al verantwoordelijke voor ${post}.`);
   }
 
-  function setDays(days: StaffDayId) {
-    updateUser(person.id, { days: person.days === days ? null : days });
+  function handleBuildHalf(kind: "opbouw" | "afbouw", day: string, half: HalfDayId) {
+    const present = constrainHalves(kind, day, halvesFor(planning, kind, day, person.id));
+    const dayList = kind === "opbouw" ? person.opbouwDays : person.afbouwDays;
+    const assigned = (dayList as string[]).includes(day);
+    const allowed = availableHalves(kind, day);
+    if (!allowed.includes(half)) {
+      return;
+    }
+    const virtualFull = assigned && present.length === 0;
+    const active: HalfDayId[] = virtualFull ? allowed : present;
+    const turningOff = active.includes(half);
+    const remaining = turningOff ? active.filter((entry) => entry !== half) : [...active, half];
+
+    if (virtualFull) {
+      for (const keep of remaining) {
+        toggleHalf(kind, day, person.id, keep);
+      }
+    } else {
+      toggleHalf(kind, day, person.id, half);
+    }
+
+    if (remaining.length === 0) {
+      updateUser(person.id, {
+        [kind === "opbouw" ? "opbouwDays" : "afbouwDays"]: dayList.filter((id) => id !== day),
+      });
+      return;
+    }
+
+    const nextDays = assigned ? dayList : [...dayList, day];
+    if (kind === "opbouw" && day === "friday") {
+      const opbouwDays: OpbouwDayId[] = assigned ? person.opbouwDays : [...person.opbouwDays, "friday"];
+      updateUser(
+        person.id,
+        festivalSchedulePatch(person.tasks, withoutFestivalFriday(person.festivalByDay ?? {}), opbouwDays),
+      );
+      return;
+    }
+
+    updateUser(person.id, {
+      [kind === "opbouw" ? "opbouwDays" : "afbouwDays"]: nextDays,
+    });
   }
 
   async function handleDelete() {
@@ -240,213 +355,177 @@ export default function MedewerkerDetailPage() {
         </div>
       </div>
       <p className="mt-1 text-sm text-zinc-500">{user.email}</p>
+      <BuildRewardPills person={person} className="mt-3" />
 
-      <section className="mt-8 rounded-2xl border border-zinc-200 bg-white p-6">
-        <h2 className="text-base font-semibold text-zinc-900">Taken</h2>
-        <p className="mt-1 text-sm text-zinc-500">
-          Duid aan waar deze persoon ingezet wordt.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {taskOptions.map((task) => {
-            const selected = person.tasks.includes(task.id);
-
-            return (
+      <section className="mt-5 rounded-xl border border-zinc-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-zinc-900">Taken</h2>
+        <div className="mt-3 flex flex-wrap gap-1">
+          {taskOptions
+            .filter((task) => isFestivalTask(task.id))
+            .map((task) => (
               <button
                 key={task.id}
                 type="button"
                 disabled={!canManage}
                 onClick={() => toggleTask(task.id)}
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  selected
-                    ? "bg-zinc-900 text-white"
-                    : "border border-zinc-200 bg-white text-zinc-700"
-                } disabled:cursor-not-allowed disabled:opacity-60`}
+                className={pillClass(person.tasks.includes(task.id))}
               >
                 {task.label}
               </button>
-            );
-          })}
+            ))}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-1">
+          {taskOptions
+            .filter((task) => task.id === "opbouw" || task.id === "afbouw")
+            .map((task) => (
+              <button
+                key={task.id}
+                type="button"
+                disabled={!canManage}
+                onClick={() => toggleTask(task.id)}
+                className={pillClass(person.tasks.includes(task.id))}
+              >
+                {task.label}
+              </button>
+            ))}
         </div>
 
-        {person.tasks.some(isFestivalTask) ? (
-          <div className="mt-6 space-y-2">
-            <h3 className="text-sm font-semibold text-zinc-900">Verantwoordelijke</h3>
-            <p className="text-sm text-zinc-500">
-              Eén persoon per post. Zet de toggle aan als deze persoon verantwoordelijke is.
-            </p>
-            {leadError ? (
-              <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
-                {leadError}
-              </p>
-            ) : null}
-            {person.tasks.filter(isFestivalTask).map((taskId) => {
-              const task = taskOptions.find((option) => option.id === taskId);
-              const isLead = planning.responsible[taskId] === person.id;
+        {person.tasks.some(isFestivalTask) || person.tasks.includes("opbouw") || person.tasks.includes("afbouw") ? (
+          <div className="mt-4 space-y-3 border-t border-zinc-200 pt-4">
+            {person.tasks.some(isFestivalTask) ? (
+              <div className="space-y-3">
+                {person.tasks.filter(isFestivalTask).map((taskId) => {
+                  const task = taskOptions.find((option) => option.id === taskId);
+                  const post = posts.find((entry) => entry.id === taskId);
+                  const isLead = planning.responsible[taskId] === person.id;
 
-              return (
-                <label
-                  key={taskId}
-                  className="flex items-center justify-between gap-3 rounded border border-zinc-200 px-3 py-2"
-                >
-                  <span className="text-sm text-zinc-800">
-                    {task?.label ?? taskId}
-                    {isLead ? " *" : ""}
-                  </span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={isLead}
-                    disabled={!canManage}
-                    onClick={() => handleToggleLead(taskId)}
-                    className={`relative h-5 w-9 rounded-full transition-colors disabled:opacity-60 ${
-                      isLead ? "bg-zinc-900" : "bg-zinc-200"
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                        isLead ? "translate-x-4" : "translate-x-0"
-                      }`}
-                    />
-                    <span className="sr-only">Verantwoordelijke {task?.label}</span>
-                  </button>
-                </label>
-              );
-            })}
+                  return (
+                    <div key={taskId} className="space-y-1.5">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <h3 className="shrink-0 text-sm font-semibold text-zinc-900">
+                          {task?.label ?? taskId}
+                        </h3>
+                        <div className="flex flex-wrap gap-1">
+                          {planningDayOptions.map((day) => {
+                            const allowed = !post || worksOnDay(post.days, day.id);
+                            return (
+                              <button
+                                key={day.id}
+                                type="button"
+                                disabled={!canManage || !allowed}
+                                onClick={() => setFestivalDay(taskId, day.id)}
+                                className={pillClass((person.festivalByDay ?? {})[day.id] === taskId)}
+                              >
+                                {day.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!canManage}
+                          onClick={() => handleToggleLead(taskId)}
+                          title={isLead ? "Verantwoordelijke" : "Maak verantwoordelijke"}
+                          className="ml-auto shrink-0 rounded p-0.5 text-zinc-300 hover:text-amber-500 disabled:opacity-60"
+                        >
+                          <StarIcon
+                            filled={isLead}
+                            className={`h-5 w-5 ${isLead ? "text-amber-500" : ""}`}
+                          />
+                          <span className="sr-only">
+                            {isLead ? `Verantwoordelijke ${task?.label}` : `Maak verantwoordelijke van ${task?.label}`}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {leadError ? (
+                  <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+                    {leadError}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {person.tasks.includes("opbouw") ? (
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-900">Opbouw</h3>
+                <div className="mt-2 space-y-1">
+                  {opbouwDayOptions.map((day) => {
+                    const present = constrainHalves("opbouw", day.id, halvesFor(planning, "opbouw", day.id, person.id));
+                    const assigned = person.opbouwDays.includes(day.id);
+                    const active = assigned && present.length === 0 ? availableHalves("opbouw", day.id) : present;
+
+                    return (
+                      <div key={day.id} className="flex items-center gap-3">
+                        <p className="w-24 shrink-0 text-sm text-zinc-700">{day.label}</p>
+                        <HalfDayPills
+                          kind="opbouw"
+                          dayId={day.id}
+                          active={active}
+                          canManage={canManage}
+                          onToggle={(half) => handleBuildHalf("opbouw", day.id, half)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {person.tasks.includes("afbouw") ? (
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-900">Afbouw</h3>
+                <div className="mt-2 space-y-1">
+                  {afbouwDayOptions.map((day) => {
+                    const present = constrainHalves("afbouw", day.id, halvesFor(planning, "afbouw", day.id, person.id));
+                    const assigned = person.afbouwDays.includes(day.id);
+                    const active = assigned && present.length === 0 ? availableHalves("afbouw", day.id) : present;
+
+                    return (
+                      <div key={day.id} className="flex items-center gap-3">
+                        <p className="w-24 shrink-0 text-sm text-zinc-700">{day.label}</p>
+                        <HalfDayPills
+                          kind="afbouw"
+                          dayId={day.id}
+                          active={active}
+                          canManage={canManage}
+                          onToggle={(half) => handleBuildHalf("afbouw", day.id, half)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
-
-        {person.tasks.includes("opbouw") ? (
-          <>
-            <h3 className="mt-6 text-sm font-semibold text-zinc-900">Opbouw</h3>
-            <p className="mt-1 text-sm text-zinc-500">Maandag tot vrijdag.</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {opbouwDayOptions.map((day) => {
-                const selected = person.opbouwDays.includes(day.id);
-
-                return (
-                  <button
-                    key={day.id}
-                    type="button"
-                    disabled={!canManage}
-                    onClick={() => {
-                      updateUser(person.id, { opbouwDays: toggleId(person.opbouwDays, day.id) });
-                      if (selected) {
-                        clearAttendance(person.id, "opbouw", day.id);
-                      }
-                    }}
-                    className={`rounded-full px-3 py-1.5 text-sm ${
-                      selected
-                        ? "bg-zinc-900 text-white"
-                        : "border border-zinc-200 bg-white text-zinc-700"
-                    } disabled:cursor-not-allowed disabled:opacity-60`}
-                  >
-                    {day.label}
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        ) : null}
-
-        {person.tasks.includes("afbouw") ? (
-          <>
-            <h3 className="mt-6 text-sm font-semibold text-zinc-900">Afbouw</h3>
-            <p className="mt-1 text-sm text-zinc-500">Zondag tot woensdag.</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {afbouwDayOptions.map((day) => {
-                const selected = person.afbouwDays.includes(day.id);
-
-                return (
-                  <button
-                    key={day.id}
-                    type="button"
-                    disabled={!canManage}
-                    onClick={() => {
-                      updateUser(person.id, { afbouwDays: toggleId(person.afbouwDays, day.id) });
-                      if (selected) {
-                        clearAttendance(person.id, "afbouw", day.id);
-                      }
-                    }}
-                    className={`rounded-full px-3 py-1.5 text-sm ${
-                      selected
-                        ? "bg-zinc-900 text-white"
-                        : "border border-zinc-200 bg-white text-zinc-700"
-                    } disabled:cursor-not-allowed disabled:opacity-60`}
-                  >
-                    {day.label}
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        ) : null}
-
-        {person.tasks.some((task) => isFestivalTask(task)) ? (
-          <>
-            <h3 className="mt-6 text-sm font-semibold text-zinc-900">Festival</h3>
-            <p className="mt-1 text-sm text-zinc-500">Vrijdag, zaterdag of beide dagen.</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {staffDayOptions.map((day) => {
-                const selected = person.days === day.id;
-
-                return (
-                  <button
-                    key={day.id}
-                    type="button"
-                    disabled={!canManage}
-                    onClick={() => setDays(day.id)}
-                    className={`rounded-full px-3 py-1.5 text-sm ${
-                      selected
-                        ? "bg-zinc-900 text-white"
-                        : "border border-zinc-200 bg-white text-zinc-700"
-                    } disabled:cursor-not-allowed disabled:opacity-60`}
-                  >
-                    {day.label}
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        ) : null}
       </section>
 
-      <section className="mt-4 rounded-2xl border border-zinc-200 bg-white p-6">
-        <h2 className="text-base font-semibold text-zinc-900">T-shirt</h2>
-        <p className="mt-1 text-sm text-zinc-500">
-          Vorig jaar: {person.tshirtSizeLastYear ?? "onbekend"}. Dit jaar kiest de medewerker zelf en moet bevestigen.
-          {getsTshirtPerFestivalDay(person.days)
-            ? " Twee festivaldagen = twee t-shirts, eventueel met een andere maat per dag. Opbouw en afbouw tellen niet mee."
-            : " Opbouw en afbouw geven geen extra t-shirt."}
-        </p>
-        <p className="mt-3 text-sm text-zinc-800">
-          {hasConfirmedTshirt(person)
-            ? `Bevestigd: ${formatTshirtSizes(person)}`
-            : `Nog niet bevestigd${person.tshirtSize ? ` (voorstel ${formatTshirtSizes(person)})` : ""}`}
-        </p>
-      </section>
-
-      {user.kind === "staff" ? (
-        <section className="mt-4 rounded-2xl border border-zinc-200 bg-white p-6">
-          <h2 className="text-base font-semibold text-zinc-900">Toegang</h2>
-          <p className="mt-2 text-sm leading-6 text-zinc-500">
-            Deze medewerker heeft de standaardtoegang: eigen pagina en meldingen.
-            Extra backstage-onderdelen kan alleen admin aanzetten.
-          </p>
-        </section>
-      ) : (
-        <section className="mt-4 rounded-2xl border border-zinc-200 bg-white p-6">
-          <h2 className="text-base font-semibold text-zinc-900">Onderdelen in het menu</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            Zet aan wat deze persoon mag beheren. Uitgeschakelde onderdelen verdwijnen uit de navigatie.
-          </p>
-
-          {user.kind === "admin" ? (
-            <p className="mt-4 text-sm text-zinc-700">Admin heeft toegang tot alle onderdelen.</p>
+      <section className="mt-3 rounded-xl border border-zinc-200 bg-white px-4 py-3">
+        <h2 className="text-sm font-semibold text-zinc-900">T-shirt</h2>
+        <p className="mt-1 text-sm">
+          {hasConfirmedTshirt(person) ? (
+            <span className="text-emerald-800">Bevestigd: {formatTshirtSizes(person)}</span>
           ) : (
-            <MenuModulesEditor person={person} canEdit={canEditRights} />
+            <span className="text-red-800">
+              Nog niet bevestigd{person.tshirtSize ? ` (voorstel ${formatTshirtSizes(person)})` : ""}
+            </span>
           )}
+          <span className="text-zinc-500">
+            {" "}
+            · vorig jaar {person.tshirtSizeLastYear ?? "onbekend"}
+          </span>
+        </p>
+      </section>
+
+      {user.kind === "team" ? (
+        <section className="mt-3 rounded-xl border border-zinc-200 bg-white p-4">
+          <h2 className="text-sm font-semibold text-zinc-900">Menu</h2>
+          <MenuModulesEditor person={person} canEdit={canEditRights} />
         </section>
-      )}
+      ) : null}
 
       <div className="mt-6 flex flex-wrap gap-3">
         {isAdmin && user.id !== currentUser.id ? (

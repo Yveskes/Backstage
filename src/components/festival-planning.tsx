@@ -7,11 +7,14 @@ import { useUsers } from "@/components/users-provider";
 import { canManageStaff, type AppUser } from "@/lib/permissions";
 import { formatFill, isPostComplete, isPostUnderfilled } from "@/lib/staff-planning";
 import {
+  assignFestivalPostDay,
+  daysFromFestivalByDay,
+  festivalSchedulePatch,
   isFestivalTask,
   planningDayOptions,
   postsForDay,
   staffDayOptions,
-  worksOnDay,
+  worksFestivalPostOnDay,
   type FestivalPost,
   type PlanningDayId,
   type StaffDayId,
@@ -43,24 +46,7 @@ function byName(a: AppUser, b: AppUser) {
 }
 
 function peopleForCell(users: AppUser[], taskId: StaffTaskId, day: PlanningDayId) {
-  return users.filter((user) => user.tasks.includes(taskId) && worksOnDay(user.days, day));
-}
-
-function nextDays(current: StaffDayId | null, fromDay: PlanningDayId, toDay: PlanningDayId): StaffDayId {
-  if (fromDay === toDay) {
-    return current ?? toDay;
-  }
-
-  return toDay;
-}
-
-function nextTasks(tasks: StaffTaskId[], fromTask: StaffTaskId, toTask: StaffTaskId) {
-  const withoutSource = tasks.filter((task) => task !== fromTask);
-  if (withoutSource.includes(toTask)) {
-    return withoutSource;
-  }
-
-  return [...withoutSource, toTask];
+  return users.filter((user) => worksFestivalPostOnDay(user.festivalByDay ?? {}, taskId, day));
 }
 
 function parseNeed(raw: string) {
@@ -92,7 +78,7 @@ export function FestivalPlanning() {
   }
 
   const unassigned = users
-    .filter((user) => user.tasks.some((task) => isFestivalTask(task)) && !user.days)
+    .filter((user) => user.tasks.some((task) => isFestivalTask(task)) && !daysFromFestivalByDay(user.festivalByDay ?? {}))
     .sort(byName);
 
   function movePerson(payload: PersonDragPayload, toTask: StaffTaskId, toDay: PlanningDayId) {
@@ -105,10 +91,12 @@ export function FestivalPlanning() {
       return;
     }
 
-    updateUser(user.id, {
-      tasks: nextTasks(user.tasks, payload.fromTask, toTask),
-      days: nextDays(user.days, payload.fromDay, toDay),
-    });
+    const byDay = { ...user.festivalByDay };
+    if (byDay[payload.fromDay] === payload.fromTask) {
+      delete byDay[payload.fromDay];
+    }
+    byDay[toDay] = toTask;
+    updateUser(user.id, festivalSchedulePatch(user.tasks, byDay, user.opbouwDays));
   }
 
   function assignUnassigned(userId: string, toTask: StaffTaskId, toDay: PlanningDayId) {
@@ -117,11 +105,8 @@ export function FestivalPlanning() {
       return;
     }
 
-    const withoutFestival = user.tasks.filter((task) => !isFestivalTask(task));
-    updateUser(user.id, {
-      tasks: [...withoutFestival, toTask],
-      days: toDay,
-    });
+    const byDay = assignFestivalPostDay(user.festivalByDay ?? {}, toTask, toDay);
+    updateUser(user.id, festivalSchedulePatch(user.tasks, byDay, user.opbouwDays));
   }
 
   function readPayload(event: DragEvent): (DragPayload & { unassigned?: boolean; userId?: string }) | null {

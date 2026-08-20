@@ -28,10 +28,7 @@ export default function StaffPlanningPage() {
         <span className="text-zinc-800">Planning</span>
       </p>
 
-      <PageHeader
-        title="Planning"
-        description="Opbouw (ma–vr) en afbouw (zo–wo) staan apart van de festivaldagen. Sleep mensen naar de juiste dag en duid VM/NM aan. Op festivalposten vul je in hoeveel mensen nodig zijn; de ster toont de verantwoordelijke."
-      />
+      <PageHeader title="Planning" />
 
       <StaffPlanningBoard />
     </>

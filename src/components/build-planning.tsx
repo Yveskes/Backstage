@@ -15,6 +15,7 @@ import { halvesFor } from "@/lib/staff-planning";
 import {
   afbouwDayOptions,
   halfDayOptions,
+  availableHalves,
   opbouwDayOptions,
   type AfbouwDayId,
   type BuildTaskId,
@@ -239,6 +240,19 @@ export function BuildPlanning() {
 
                               <span className="flex items-center gap-1">
                                 {halfDayOptions.map((half) => {
+                                  const allowed = availableHalves(column.kind, day.id).includes(half.id);
+                                  if (!allowed) {
+                                    return (
+                                      <span
+                                        key={half.id}
+                                        aria-hidden
+                                        className="invisible rounded px-1.5 py-0.5 text-[11px] font-medium"
+                                      >
+                                        {half.label}
+                                      </span>
+                                    );
+                                  }
+
                                   const on = present.includes(half.id);
 
                                   return (

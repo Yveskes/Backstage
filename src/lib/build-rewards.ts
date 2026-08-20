@@ -1,6 +1,6 @@
 import type { AppUser } from "@/lib/permissions";
-import { attendanceEntriesForUser, type StaffPlanning } from "@/lib/staff-planning";
-import type { HalfDayId } from "@/lib/staff-tasks";
+import { halvesFor, type StaffPlanning } from "@/lib/staff-planning";
+import { availableHalves, constrainHalves, type HalfDayId } from "@/lib/staff-tasks";
 
 export const COMBI_DAYS = 5;
 export const TOKENS_PER_HALF = 3;
@@ -28,7 +28,19 @@ export function rewardFromHalves(entries: HalfDayId[][]) {
 }
 
 export function rewardForUser(planning: StaffPlanning, user: AppUser): BuildReward {
-  const counts = rewardFromHalves(attendanceEntriesForUser(planning, user.id));
+  const entries: HalfDayId[][] = [];
+
+  for (const day of user.opbouwDays) {
+    const marked = constrainHalves("opbouw", day, halvesFor(planning, "opbouw", day, user.id));
+    entries.push(marked.length > 0 ? marked : availableHalves("opbouw", day));
+  }
+
+  for (const day of user.afbouwDays) {
+    const marked = constrainHalves("afbouw", day, halvesFor(planning, "afbouw", day, user.id));
+    entries.push(marked.length > 0 ? marked : availableHalves("afbouw", day));
+  }
+
+  const counts = rewardFromHalves(entries);
   return {
     userId: user.id,
     fullName: user.fullName || user.email,
@@ -43,7 +55,8 @@ export function rewardsForUsers(users: AppUser[], planning: StaffPlanning): Buil
       (user) =>
         user.tasks.includes("opbouw") ||
         user.tasks.includes("afbouw") ||
-        attendanceEntriesForUser(planning, user.id).length > 0,
+        user.opbouwDays.length > 0 ||
+        user.afbouwDays.length > 0,
     )
     .map((user) => rewardForUser(planning, user))
     .sort((a, b) => {

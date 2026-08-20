@@ -1,4 +1,4 @@
-import type { AfbouwDayId, OpbouwDayId, StaffDayId, StaffTaskId } from "@/lib/staff-tasks";
+import type { AfbouwDayId, FestivalByDay, OpbouwDayId, StaffDayId, StaffTaskId } from "@/lib/staff-tasks";
 import { isStaffDayId, isStaffTaskId } from "@/lib/staff-tasks";
 import type { TshirtSize } from "@/lib/tshirts";
 import { sanitizeTshirtSize } from "@/lib/tshirts";
@@ -66,6 +66,7 @@ export type AppUser = {
   modules: ModuleId[];
   tasks: StaffTaskId[];
   days: StaffDayId | null;
+  festivalByDay: FestivalByDay;
   opbouwDays: OpbouwDayId[];
   afbouwDays: AfbouwDayId[];
   tshirtSizeLastYear: TshirtSize | null;
@@ -259,6 +260,7 @@ export function createNewUser(input: {
     modules: [],
     tasks: [],
     days: null,
+    festivalByDay: {},
     opbouwDays: [],
     afbouwDays: [],
     tshirtSizeLastYear: null,

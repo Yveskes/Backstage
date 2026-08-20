@@ -4,7 +4,15 @@ import { loadDirectoryPeople, deleteDirectoryPerson, type DirectoryPerson } from
 import { isAdminEmail } from "@/lib/admins";
 import { defaultUsers } from "@/lib/users";
 import { createNewUser, defaultTshirtSize, isUsablePersonName, joinName, sanitizeDays, sanitizeModules, sanitizeTasks, splitName, type AppUser } from "@/lib/permissions";
-import { sanitizeAfbouwDays, sanitizeOpbouwDays } from "@/lib/staff-tasks";
+import {
+  clearFestivalPost,
+  daysFromFestivalByDay,
+  festivalSchedulePatch,
+  mergeFestivalTasks,
+  sanitizeAfbouwDays,
+  sanitizeFestivalByDay,
+  sanitizeOpbouwDays,
+} from "@/lib/staff-tasks";
 import { needsTshirt, sanitizeTshirtSize, type TshirtSize } from "@/lib/tshirts";
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
@@ -56,6 +64,9 @@ function normalizeUser(user: Partial<AppUser> & { fullName?: string; email?: str
   const lastName = user.lastName ?? names.lastName;
   const email = (user.email ?? "").toLowerCase();
   const kind = isAdminEmail(email) ? "admin" : (user.kind ?? "staff");
+  const tasks = sanitizeTasks(user.tasks);
+  const festivalByDay = sanitizeFestivalByDay(user.festivalByDay, sanitizeDays(user.days), tasks);
+  const days = daysFromFestivalByDay(festivalByDay);
 
   return {
     id: user.id ?? `user-${crypto.randomUUID()}`,
@@ -67,15 +78,16 @@ function normalizeUser(user: Partial<AppUser> & { fullName?: string; email?: str
     initials: user.initials || `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase(),
     kind,
     modules: sanitizeModules(user.modules),
-    tasks: sanitizeTasks(user.tasks),
-    days: sanitizeDays(user.days),
+    tasks: mergeFestivalTasks(tasks, festivalByDay),
+    days,
+    festivalByDay,
     opbouwDays: sanitizeOpbouwDays(user.opbouwDays),
     afbouwDays: sanitizeAfbouwDays(user.afbouwDays),
     tshirtSizeLastYear: sanitizeTshirtSize(user.tshirtSizeLastYear),
     tshirtSize: defaultTshirtSize(user.tshirtSizeLastYear, user.tshirtSize),
     tshirtSizeSaturday:
       sanitizeTshirtSize(user.tshirtSizeSaturday) ??
-      (user.days === "both" && user.tshirtConfirmed
+      (days === "both" && user.tshirtConfirmed
         ? defaultTshirtSize(user.tshirtSizeLastYear, user.tshirtSize)
         : null),
     tshirtConfirmed: Boolean(user.tshirtConfirmed),
@@ -479,15 +491,16 @@ export function UsersProvider({ children }: { children: ReactNode }) {
             return current;
           }
 
+          const tasks = sanitizeTasks(user.tasks);
+          const festivalByDay = sanitizeFestivalByDay(user.festivalByDay, sanitizeDays(user.days), tasks);
+
           return [
             ...current,
             {
               ...user,
               kind: isAdminEmail(user.email) ? "admin" : user.kind === "team" ? "team" : "staff",
               modules: user.kind === "team" ? sanitizeModules(user.modules) : [],
-              tasks: sanitizeTasks(user.tasks),
-              days: sanitizeDays(user.days),
-              opbouwDays: sanitizeOpbouwDays(user.opbouwDays),
+              ...festivalSchedulePatch(tasks, festivalByDay, sanitizeOpbouwDays(user.opbouwDays)),
               afbouwDays: sanitizeAfbouwDays(user.afbouwDays),
               tshirtSizeLastYear: sanitizeTshirtSize(user.tshirtSizeLastYear),
               tshirtSize: defaultTshirtSize(user.tshirtSizeLastYear, user.tshirtSize),
@@ -501,11 +514,19 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       refreshDirectory,
       removeTaskFromAll(taskId) {
         setUsers((current) =>
-          current.map((user) =>
-            user.tasks.includes(taskId)
-              ? { ...user, tasks: user.tasks.filter((task) => task !== taskId) }
-              : user,
-          ),
+          current.map((user) => {
+            const byDay = user.festivalByDay ?? {};
+            const tasks = user.tasks.filter((task) => task !== taskId);
+            if (
+              tasks.length === user.tasks.length &&
+              byDay.friday !== taskId &&
+              byDay.saturday !== taskId
+            ) {
+              return user;
+            }
+
+            return { ...user, ...festivalSchedulePatch(tasks, clearFestivalPost(byDay, taskId), user.opbouwDays) };
+          }),
         );
       },
       async removeUser(id) {

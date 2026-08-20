@@ -1,13 +1,21 @@
 import type { AppUser } from "@/lib/permissions";
+import { daysFromFestivalByDay, sanitizeFestivalByDay } from "@/lib/staff-tasks";
 
-function withSaturdaySize(user: Omit<AppUser, "tshirtSizeSaturday">): AppUser {
+type SeedUser = Omit<AppUser, "tshirtSizeSaturday" | "festivalByDay">;
+
+function withSaturdaySize(user: SeedUser): AppUser {
+  const festivalByDay = sanitizeFestivalByDay(undefined, user.days, user.tasks);
+  const days = daysFromFestivalByDay(festivalByDay);
+
   return {
     ...user,
-    tshirtSizeSaturday: user.days === "both" && user.tshirtConfirmed ? user.tshirtSize : null,
+    festivalByDay,
+    days,
+    tshirtSizeSaturday: days === "both" && user.tshirtConfirmed ? user.tshirtSize : null,
   };
 }
 
-const seedUsers: Omit<AppUser, "tshirtSizeSaturday">[] = [
+const seedUsers: SeedUser[] = [
   {
     id: "yves",
     firstName: "Yves",
