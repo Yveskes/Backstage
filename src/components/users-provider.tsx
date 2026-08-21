@@ -1,6 +1,7 @@
 "use client";
 
 import { loadDirectoryPeople, deleteDirectoryPerson, type DirectoryPerson } from "@/app/(app)/medewerkers/actions";
+import { appDataKeys, loadAppData, saveAppData } from "@/app/(app)/data/actions";
 import { isAdminEmail } from "@/lib/admins";
 import { defaultUsers } from "@/lib/users";
 import { createNewUser, defaultTshirtSize, isUsablePersonName, joinName, sanitizeDays, sanitizeModules, sanitizeTasks, splitName, type AppUser } from "@/lib/permissions";
@@ -158,6 +159,34 @@ function mergeMissingDefaults(stored: AppUser[]): AppUser[] {
     .map(normalizeUser);
 
   return extra.length === 0 ? stored : [...stored, ...extra];
+}
+
+function mergeByEmail(base: AppUser[], overlay: AppUser[]): AppUser[] {
+  const byEmail = new Map(overlay.map((user) => [user.email.toLowerCase(), user]));
+  const used = new Set<string>();
+  const merged = base.map((user) => {
+    const other = byEmail.get(user.email.toLowerCase());
+    if (!other) {
+      return user;
+    }
+    used.add(user.email.toLowerCase());
+    return normalizeUser({
+      ...user,
+      ...other,
+      id: user.id,
+      email: user.email,
+      kind: user.kind === "admin" || other.kind === "admin" ? user.kind : other.kind,
+      modules: user.modules.length > 0 ? user.modules : other.modules,
+    });
+  });
+
+  for (const user of overlay) {
+    if (!used.has(user.email.toLowerCase())) {
+      merged.push(user);
+    }
+  }
+
+  return merged;
 }
 
 function readUsers(): AppUser[] {
@@ -364,6 +393,17 @@ export function UsersProvider({ children }: { children: ReactNode }) {
             // Keep local users if the database is not ready yet.
           }
 
+          try {
+            const roster = await loadAppData<AppUser[]>(appDataKeys.usersRoster);
+            if (Array.isArray(roster) && roster.length > 0) {
+              nextUsers = mergeMissingDefaults(
+                mergeByEmail(nextUsers, roster.map((entry) => normalizeUser(entry))),
+              );
+            }
+          } catch {
+            // Keep local roster if app_data is not ready yet.
+          }
+
           setUsers(nextUsers);
           setReady(true);
         })
@@ -387,6 +427,12 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     } else {
       window.localStorage.removeItem(VIEW_AS_KEY);
     }
+
+    const timer = window.setTimeout(() => {
+      void saveAppData(appDataKeys.usersRoster, users);
+    }, 500);
+
+    return () => window.clearTimeout(timer);
   }, [users, viewAsUserId, tshirtNotices, ready]);
 
   const refreshDirectory = useCallback(async () => {

@@ -1,11 +1,13 @@
 "use client";
 
+import { appDataKeys, loadAppData, saveAppData } from "@/app/(app)/data/actions";
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -32,6 +34,13 @@ const INVOICES_KEY = "backstage.sponsorInvoices";
 const DRINKS_KEY = "backstage.sponsorDrinks";
 const TICKETS_KEY = "backstage.sponsorTickets";
 
+type SponsorsBundle = {
+  sponsors: Sponsor[];
+  invoices: SponsorInvoice[];
+  drinkVouchers: SponsorBenefit[];
+  tickets: SponsorBenefit[];
+};
+
 type SponsorsContextValue = {
   ready: boolean;
   sponsors: Sponsor[];
@@ -41,20 +50,21 @@ type SponsorsContextValue = {
   getSponsor: (id: string) => Sponsor | undefined;
   updateSponsor: (id: string, patch: Partial<Sponsor>) => void;
   updateBilling: (id: string, billing: Partial<SponsorBilling>) => void;
-  addExtraLine: (sponsorId: string, line: { description: string; amount: number }) => void;
-  removeExtraLine: (sponsorId: string, lineId: string) => void;
+  saveSponsor: (id: string, patch?: Partial<Sponsor>) => Promise<{ error?: string }>;
+  addExtraLine: (sponsorId: string, line: { description: string; amount: number }) => Promise<{ error?: string }>;
+  removeExtraLine: (sponsorId: string, lineId: string) => Promise<{ error?: string }>;
   addBenefit: (
     type: "drankbonnen" | "vrijkaarten",
     input: { sponsorId: string; recipientName: string; quantity: number; unitPrice: number; onInvoice: boolean },
-  ) => void;
+  ) => Promise<{ error?: string }>;
   updateBenefit: (
     type: "drankbonnen" | "vrijkaarten",
     id: string,
     patch: Partial<Pick<SponsorBenefit, "onInvoice" | "status">>,
-  ) => void;
-  removeBenefit: (type: "drankbonnen" | "vrijkaarten", id: string) => void;
-  generateInvoice: (sponsorId: string) => SponsorInvoice | { error: string };
-  setInvoiceStatus: (id: string, status: SponsorInvoiceStatus) => void;
+  ) => Promise<{ error?: string }>;
+  removeBenefit: (type: "drankbonnen" | "vrijkaarten", id: string) => Promise<{ error?: string }>;
+  generateInvoice: (sponsorId: string) => Promise<SponsorInvoice | { error: string }>;
+  setInvoiceStatus: (id: string, status: SponsorInvoiceStatus) => Promise<{ error?: string }>;
 };
 
 const SponsorsContext = createContext<SponsorsContextValue | null>(null);
@@ -80,68 +90,112 @@ function mergeById<T extends { id: string }>(defaults: T[], stored: T[] | null):
   return [...map.values()];
 }
 
+function normalizeBundle(raw: Partial<SponsorsBundle> | null): SponsorsBundle {
+  const sponsors = Array.isArray(raw?.sponsors)
+    ? mergeById(
+        mockSponsors,
+        raw.sponsors.map((entry) => normalizeSponsor(entry as Partial<Sponsor>)),
+      )
+    : mockSponsors;
+
+  const invoices = Array.isArray(raw?.invoices)
+    ? mergeById(
+        mockInvoices,
+        raw.invoices
+          .map((entry) => normalizeInvoice(entry as Partial<SponsorInvoice>))
+          .filter((entry): entry is SponsorInvoice => Boolean(entry)),
+      )
+    : mockInvoices;
+
+  const drinkVouchers = Array.isArray(raw?.drinkVouchers)
+    ? raw.drinkVouchers
+        .map((entry) => normalizeBenefit(entry as Partial<SponsorBenefit>))
+        .filter((entry): entry is SponsorBenefit => Boolean(entry))
+    : mockDrinkVouchers;
+
+  const tickets = Array.isArray(raw?.tickets)
+    ? raw.tickets
+        .map((entry) => normalizeBenefit(entry as Partial<SponsorBenefit>))
+        .filter((entry): entry is SponsorBenefit => Boolean(entry))
+    : mockTickets;
+
+  return { sponsors, invoices, drinkVouchers, tickets };
+}
+
 export function SponsorsProvider({ children }: { children: ReactNode }) {
   const [sponsors, setSponsors] = useState<Sponsor[]>(mockSponsors);
   const [invoices, setInvoices] = useState<SponsorInvoice[]>(mockInvoices);
   const [drinkVouchers, setDrinkVouchers] = useState<SponsorBenefit[]>(mockDrinkVouchers);
   const [tickets, setTickets] = useState<SponsorBenefit[]>(mockTickets);
   const [ready, setReady] = useState(false);
+  const stateRef = useRef<SponsorsBundle>({
+    sponsors: mockSponsors,
+    invoices: mockInvoices,
+    drinkVouchers: mockDrinkVouchers,
+    tickets: mockTickets,
+  });
 
   useEffect(() => {
-    const storedSponsors = readJson<unknown[]>(SPONSORS_KEY);
-    const storedInvoices = readJson<unknown[]>(INVOICES_KEY);
-    const storedDrinks = readJson<unknown[]>(DRINKS_KEY);
-    const storedTickets = readJson<unknown[]>(TICKETS_KEY);
+    stateRef.current = { sponsors, invoices, drinkVouchers, tickets };
+  }, [drinkVouchers, invoices, sponsors, tickets]);
 
-    if (Array.isArray(storedSponsors)) {
-      setSponsors(
-        mergeById(
-          mockSponsors,
-          storedSponsors.map((entry) => normalizeSponsor(entry as Partial<Sponsor>)),
-        ),
-      );
+  const persist = useCallback(async (bundle: SponsorsBundle) => {
+    const result = await saveAppData(appDataKeys.sponsors, bundle);
+    if (!result.error) {
+      window.localStorage.setItem(SPONSORS_KEY, JSON.stringify(bundle.sponsors));
+      window.localStorage.setItem(INVOICES_KEY, JSON.stringify(bundle.invoices));
+      window.localStorage.setItem(DRINKS_KEY, JSON.stringify(bundle.drinkVouchers));
+      window.localStorage.setItem(TICKETS_KEY, JSON.stringify(bundle.tickets));
     }
-
-    if (Array.isArray(storedInvoices)) {
-      setInvoices(
-        mergeById(
-          mockInvoices,
-          storedInvoices
-            .map((entry) => normalizeInvoice(entry as Partial<SponsorInvoice>))
-            .filter((entry): entry is SponsorInvoice => Boolean(entry)),
-        ),
-      );
-    }
-
-    if (Array.isArray(storedDrinks)) {
-      setDrinkVouchers(
-        storedDrinks
-          .map((entry) => normalizeBenefit(entry as Partial<SponsorBenefit>))
-          .filter((entry): entry is SponsorBenefit => Boolean(entry)),
-      );
-    }
-
-    if (Array.isArray(storedTickets)) {
-      setTickets(
-        storedTickets
-          .map((entry) => normalizeBenefit(entry as Partial<SponsorBenefit>))
-          .filter((entry): entry is SponsorBenefit => Boolean(entry)),
-      );
-    }
-
-    setReady(true);
+    return result;
   }, []);
 
   useEffect(() => {
-    if (!ready) {
-      return;
-    }
+    let cancelled = false;
 
-    window.localStorage.setItem(SPONSORS_KEY, JSON.stringify(sponsors));
-    window.localStorage.setItem(INVOICES_KEY, JSON.stringify(invoices));
-    window.localStorage.setItem(DRINKS_KEY, JSON.stringify(drinkVouchers));
-    window.localStorage.setItem(TICKETS_KEY, JSON.stringify(tickets));
-  }, [drinkVouchers, invoices, ready, sponsors, tickets]);
+    void (async () => {
+      const fromDb = await loadAppData<Partial<SponsorsBundle>>(appDataKeys.sponsors);
+      if (cancelled) {
+        return;
+      }
+
+      if (fromDb && Array.isArray(fromDb.sponsors)) {
+        const bundle = normalizeBundle(fromDb);
+        setSponsors(bundle.sponsors);
+        setInvoices(bundle.invoices);
+        setDrinkVouchers(bundle.drinkVouchers);
+        setTickets(bundle.tickets);
+        setReady(true);
+        return;
+      }
+
+      const local = normalizeBundle({
+        sponsors: readJson<unknown[]>(SPONSORS_KEY)?.map((entry) =>
+          normalizeSponsor(entry as Partial<Sponsor>),
+        ),
+        invoices: readJson<unknown[]>(INVOICES_KEY)
+          ?.map((entry) => normalizeInvoice(entry as Partial<SponsorInvoice>))
+          .filter((entry): entry is SponsorInvoice => Boolean(entry)),
+        drinkVouchers: readJson<unknown[]>(DRINKS_KEY)
+          ?.map((entry) => normalizeBenefit(entry as Partial<SponsorBenefit>))
+          .filter((entry): entry is SponsorBenefit => Boolean(entry)),
+        tickets: readJson<unknown[]>(TICKETS_KEY)
+          ?.map((entry) => normalizeBenefit(entry as Partial<SponsorBenefit>))
+          .filter((entry): entry is SponsorBenefit => Boolean(entry)),
+      });
+
+      setSponsors(local.sponsors);
+      setInvoices(local.invoices);
+      setDrinkVouchers(local.drinkVouchers);
+      setTickets(local.tickets);
+      setReady(true);
+      void persist(local);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [persist]);
 
   const getSponsor = useCallback((id: string) => sponsors.find((sponsor) => sponsor.id === id), [sponsors]);
 
@@ -161,32 +215,62 @@ export function SponsorsProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const addExtraLine = useCallback((sponsorId: string, line: { description: string; amount: number }) => {
-    const extra: SponsorExtraLine = {
-      id: crypto.randomUUID(),
-      description: line.description.trim(),
-      amount: line.amount,
-    };
+  const saveSponsor = useCallback(
+    async (id: string, patch?: Partial<Sponsor>) => {
+      const nextSponsors = stateRef.current.sponsors.map((sponsor) => {
+        if (sponsor.id !== id) {
+          return sponsor;
+        }
 
-    setSponsors((current) =>
-      current.map((sponsor) =>
+        const fromState = sponsors.find((entry) => entry.id === id) ?? sponsor;
+        return normalizeSponsor({ ...fromState, ...patch, id });
+      });
+
+      setSponsors(nextSponsors);
+      stateRef.current = { ...stateRef.current, sponsors: nextSponsors };
+      return persist({ ...stateRef.current, sponsors: nextSponsors });
+    },
+    [persist, sponsors],
+  );
+
+  const persistCurrent = useCallback(async () => {
+    return persist(stateRef.current);
+  }, [persist]);
+
+  const addExtraLine = useCallback(
+    async (sponsorId: string, line: { description: string; amount: number }) => {
+      const extra: SponsorExtraLine = {
+        id: crypto.randomUUID(),
+        description: line.description.trim(),
+        amount: line.amount,
+      };
+
+      const nextSponsors = stateRef.current.sponsors.map((sponsor) =>
         sponsor.id === sponsorId ? { ...sponsor, extraLines: [...sponsor.extraLines, extra] } : sponsor,
-      ),
-    );
-  }, []);
+      );
+      setSponsors(nextSponsors);
+      stateRef.current = { ...stateRef.current, sponsors: nextSponsors };
+      return persist({ ...stateRef.current, sponsors: nextSponsors });
+    },
+    [persist],
+  );
 
-  const removeExtraLine = useCallback((sponsorId: string, lineId: string) => {
-    setSponsors((current) =>
-      current.map((sponsor) =>
+  const removeExtraLine = useCallback(
+    async (sponsorId: string, lineId: string) => {
+      const nextSponsors = stateRef.current.sponsors.map((sponsor) =>
         sponsor.id === sponsorId
           ? { ...sponsor, extraLines: sponsor.extraLines.filter((line) => line.id !== lineId) }
           : sponsor,
-      ),
-    );
-  }, []);
+      );
+      setSponsors(nextSponsors);
+      stateRef.current = { ...stateRef.current, sponsors: nextSponsors };
+      return persist({ ...stateRef.current, sponsors: nextSponsors });
+    },
+    [persist],
+  );
 
   const addBenefit = useCallback(
-    (
+    async (
       type: "drankbonnen" | "vrijkaarten",
       input: { sponsorId: string; recipientName: string; quantity: number; unitPrice: number; onInvoice: boolean },
     ) => {
@@ -199,38 +283,71 @@ export function SponsorsProvider({ children }: { children: ReactNode }) {
         onInvoice: input.onInvoice,
         status: "pending",
       };
-      const setter = type === "drankbonnen" ? setDrinkVouchers : setTickets;
-      setter((current) => [...current, item]);
+
+      if (type === "drankbonnen") {
+        const next = [...stateRef.current.drinkVouchers, item];
+        setDrinkVouchers(next);
+        stateRef.current = { ...stateRef.current, drinkVouchers: next };
+      } else {
+        const next = [...stateRef.current.tickets, item];
+        setTickets(next);
+        stateRef.current = { ...stateRef.current, tickets: next };
+      }
+
+      return persistCurrent();
     },
-    [],
+    [persistCurrent],
   );
 
   const updateBenefit = useCallback(
-    (
+    async (
       type: "drankbonnen" | "vrijkaarten",
       id: string,
       patch: Partial<Pick<SponsorBenefit, "onInvoice" | "status">>,
     ) => {
-      const setter = type === "drankbonnen" ? setDrinkVouchers : setTickets;
-      setter((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+      if (type === "drankbonnen") {
+        const next = stateRef.current.drinkVouchers.map((item) =>
+          item.id === id ? { ...item, ...patch } : item,
+        );
+        setDrinkVouchers(next);
+        stateRef.current = { ...stateRef.current, drinkVouchers: next };
+      } else {
+        const next = stateRef.current.tickets.map((item) => (item.id === id ? { ...item, ...patch } : item));
+        setTickets(next);
+        stateRef.current = { ...stateRef.current, tickets: next };
+      }
+
+      return persistCurrent();
     },
-    [],
+    [persistCurrent],
   );
 
-  const removeBenefit = useCallback((type: "drankbonnen" | "vrijkaarten", id: string) => {
-    const setter = type === "drankbonnen" ? setDrinkVouchers : setTickets;
-    setter((current) => current.filter((item) => item.id !== id));
-  }, []);
+  const removeBenefit = useCallback(
+    async (type: "drankbonnen" | "vrijkaarten", id: string) => {
+      if (type === "drankbonnen") {
+        const next = stateRef.current.drinkVouchers.filter((item) => item.id !== id);
+        setDrinkVouchers(next);
+        stateRef.current = { ...stateRef.current, drinkVouchers: next };
+      } else {
+        const next = stateRef.current.tickets.filter((item) => item.id !== id);
+        setTickets(next);
+        stateRef.current = { ...stateRef.current, tickets: next };
+      }
+
+      return persistCurrent();
+    },
+    [persistCurrent],
+  );
 
   const generateInvoice = useCallback(
-    (sponsorId: string) => {
-      const sponsor = sponsors.find((item) => item.id === sponsorId);
+    async (sponsorId: string) => {
+      const sponsor = stateRef.current.sponsors.find((item) => item.id === sponsorId);
       if (!sponsor) {
         return { error: "Sponsor niet gevonden." };
       }
 
-      const drinks = drinkVouchers.filter((item) => item.sponsorId === sponsorId);
-      const passes = tickets.filter((item) => item.sponsorId === sponsorId);
+      const drinks = stateRef.current.drinkVouchers.filter((item) => item.sponsorId === sponsorId);
+      const passes = stateRef.current.tickets.filter((item) => item.sponsorId === sponsorId);
       const draft = buildInvoiceDraft(sponsor, drinks, passes);
       if (draft.lines.length === 0) {
         return { error: "Er staat niets op de factuur." };
@@ -239,7 +356,7 @@ export function SponsorsProvider({ children }: { children: ReactNode }) {
       const invoice: SponsorInvoice = {
         id: crypto.randomUUID(),
         sponsorId,
-        invoiceNumber: nextInvoiceNumber(invoices, sponsor.year),
+        invoiceNumber: nextInvoiceNumber(stateRef.current.invoices, sponsor.year),
         amount: draft.total,
         status: "draft",
         createdAt: new Date().toISOString(),
@@ -248,15 +365,29 @@ export function SponsorsProvider({ children }: { children: ReactNode }) {
         lines: draft.lines.map((line) => ({ ...line, id: crypto.randomUUID() })),
       };
 
-      setInvoices((current) => [invoice, ...current]);
+      const nextInvoices = [invoice, ...stateRef.current.invoices];
+      setInvoices(nextInvoices);
+      stateRef.current = { ...stateRef.current, invoices: nextInvoices };
+      const result = await persist({ ...stateRef.current, invoices: nextInvoices });
+      if (result.error) {
+        return { error: result.error };
+      }
       return invoice;
     },
-    [drinkVouchers, invoices, sponsors, tickets],
+    [persist],
   );
 
-  const setInvoiceStatus = useCallback((id: string, status: SponsorInvoiceStatus) => {
-    setInvoices((current) => current.map((invoice) => (invoice.id === id ? { ...invoice, status } : invoice)));
-  }, []);
+  const setInvoiceStatus = useCallback(
+    async (id: string, status: SponsorInvoiceStatus) => {
+      const nextInvoices = stateRef.current.invoices.map((invoice) =>
+        invoice.id === id ? { ...invoice, status } : invoice,
+      );
+      setInvoices(nextInvoices);
+      stateRef.current = { ...stateRef.current, invoices: nextInvoices };
+      return persist({ ...stateRef.current, invoices: nextInvoices });
+    },
+    [persist],
+  );
 
   const value = useMemo<SponsorsContextValue>(
     () => ({
@@ -268,6 +399,7 @@ export function SponsorsProvider({ children }: { children: ReactNode }) {
       getSponsor,
       updateSponsor,
       updateBilling,
+      saveSponsor,
       addExtraLine,
       removeExtraLine,
       addBenefit,
@@ -286,6 +418,7 @@ export function SponsorsProvider({ children }: { children: ReactNode }) {
       ready,
       removeBenefit,
       removeExtraLine,
+      saveSponsor,
       setInvoiceStatus,
       sponsors,
       tickets,

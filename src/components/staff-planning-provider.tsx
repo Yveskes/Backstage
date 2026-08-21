@@ -1,5 +1,6 @@
 "use client";
 
+import { appDataKeys, loadAppData, saveAppData } from "@/app/(app)/data/actions";
 import {
   createContext,
   useCallback,
@@ -40,6 +41,11 @@ const POSTS_KEY = "backstage.festivalPosts";
 
 type ToggleResult = { ok: true } | { ok: false; holderId: string };
 
+type StaffPlanningBundle = {
+  planning: StaffPlanning;
+  posts: FestivalPost[];
+};
+
 type StaffPlanningContextValue = {
   planning: StaffPlanning;
   posts: FestivalPost[];
@@ -63,24 +69,49 @@ export function StaffPlanningProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(PLANNING_KEY);
-      setPlanning(raw ? sanitizePlanning(JSON.parse(raw)) : emptyPlanning());
-    } catch {
-      setPlanning(emptyPlanning());
-    }
+    let cancelled = false;
 
-    try {
-      const rawPosts = window.localStorage.getItem(POSTS_KEY);
-      const nextPosts = sanitizeFestivalPosts(rawPosts ? JSON.parse(rawPosts) : null);
+    void (async () => {
+      const fromDb = await loadAppData<StaffPlanningBundle>(appDataKeys.staffPlanning);
+      if (cancelled) {
+        return;
+      }
+
+      if (fromDb?.planning && Array.isArray(fromDb.posts)) {
+        const nextPosts = sanitizeFestivalPosts(fromDb.posts);
+        setPlanning(sanitizePlanning(fromDb.planning));
+        setPosts(nextPosts);
+        setFestivalPostCatalog(nextPosts);
+        setReady(true);
+        return;
+      }
+
+      let nextPlanning = emptyPlanning();
+      let nextPosts = defaultFestivalPosts;
+      try {
+        const raw = window.localStorage.getItem(PLANNING_KEY);
+        nextPlanning = raw ? sanitizePlanning(JSON.parse(raw)) : emptyPlanning();
+      } catch {
+        nextPlanning = emptyPlanning();
+      }
+
+      try {
+        const rawPosts = window.localStorage.getItem(POSTS_KEY);
+        nextPosts = sanitizeFestivalPosts(rawPosts ? JSON.parse(rawPosts) : null);
+      } catch {
+        nextPosts = defaultFestivalPosts;
+      }
+
+      setPlanning(nextPlanning);
       setPosts(nextPosts);
       setFestivalPostCatalog(nextPosts);
-    } catch {
-      setPosts(defaultFestivalPosts);
-      setFestivalPostCatalog(defaultFestivalPosts);
-    }
+      setReady(true);
+      void saveAppData(appDataKeys.staffPlanning, { planning: nextPlanning, posts: nextPosts });
+    })();
 
-    setReady(true);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -91,6 +122,12 @@ export function StaffPlanningProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(PLANNING_KEY, JSON.stringify(planning));
     window.localStorage.setItem(POSTS_KEY, JSON.stringify(posts));
     setFestivalPostCatalog(posts);
+
+    const timer = window.setTimeout(() => {
+      void saveAppData(appDataKeys.staffPlanning, { planning, posts });
+    }, 500);
+
+    return () => window.clearTimeout(timer);
   }, [planning, posts, ready]);
 
   const setNeed = useCallback((taskId: StaffTaskId, day: string, value: number | null) => {
@@ -177,7 +214,20 @@ export function StaffPlanningProvider({ children }: { children: ReactNode }) {
       movePost,
       deletePost,
     }),
-    [addPost, clearAttendance, clearLeadIf, deletePost, movePost, planning, posts, ready, setNeed, toggleHalf, toggleLead, updatePost],
+    [
+      addPost,
+      clearAttendance,
+      clearLeadIf,
+      deletePost,
+      movePost,
+      planning,
+      posts,
+      ready,
+      setNeed,
+      toggleHalf,
+      toggleLead,
+      updatePost,
+    ],
   );
 
   return <StaffPlanningContext.Provider value={value}>{children}</StaffPlanningContext.Provider>;

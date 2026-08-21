@@ -24,6 +24,7 @@ import {
   type NotificationThread,
   type NotificationThreads,
 } from "@/lib/notifications";
+import { appDataKeys, loadAppData, saveAppData } from "@/app/(app)/data/actions";
 import { loadActivityEvents, saveActivityEvent } from "@/app/(app)/meldingen/activity-actions";
 import {
   activityToNotification,
@@ -111,60 +112,88 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(READ_KEY);
-      setReadIds(raw ? (JSON.parse(raw) as string[]) : []);
-    } catch {
-      setReadIds([]);
-    }
+    let cancelled = false;
 
-    try {
-      const rawMessages = window.localStorage.getItem(TASK_MESSAGES_KEY);
-      setTaskBroadcasts(
-        rawMessages
-          ? (JSON.parse(rawMessages) as Array<Partial<TaskBroadcast> & { taskId?: StaffTaskId }>)
-              .map(normalizeBroadcast)
-              .filter((item): item is TaskBroadcast => item !== null)
-          : [],
-      );
-    } catch {
-      setTaskBroadcasts([]);
-    }
+    void (async () => {
+      try {
+        const raw = window.localStorage.getItem(READ_KEY);
+        setReadIds(raw ? (JSON.parse(raw) as string[]) : []);
+      } catch {
+        setReadIds([]);
+      }
 
-    try {
-      const rawThreads = window.localStorage.getItem(THREADS_KEY);
-      setThreads(rawThreads ? sanitizeThreads(JSON.parse(rawThreads)) : defaultThreads);
-    } catch {
-      setThreads(defaultThreads);
-    }
+      try {
+        const rawSeen = window.localStorage.getItem(SEEN_REPLIES_KEY);
+        setSeenReplyIds(rawSeen ? (JSON.parse(rawSeen) as string[]) : []);
+      } catch {
+        setSeenReplyIds([]);
+      }
 
-    try {
-      const rawSeen = window.localStorage.getItem(SEEN_REPLIES_KEY);
-      setSeenReplyIds(rawSeen ? (JSON.parse(rawSeen) as string[]) : []);
-    } catch {
-      setSeenReplyIds([]);
-    }
+      try {
+        const rawActivity = window.localStorage.getItem(ACTIVITY_KEY);
+        setActivityEvents(rawActivity ? sanitizeActivityEvents(JSON.parse(rawActivity)) : []);
+      } catch {
+        setActivityEvents([]);
+      }
 
-    try {
-      const rawActivity = window.localStorage.getItem(ACTIVITY_KEY);
-      setActivityEvents(rawActivity ? sanitizeActivityEvents(JSON.parse(rawActivity)) : []);
-    } catch {
-      setActivityEvents([]);
-    }
+      const fromDb = await loadAppData<{
+        taskBroadcasts?: Array<Partial<TaskBroadcast> & { taskId?: StaffTaskId }>;
+        threads?: unknown;
+      }>(appDataKeys.notifications);
 
-    setReady(true);
+      if (cancelled) {
+        return;
+      }
 
-    void loadActivityEvents()
-      .then((remote) => {
-        if (remote.length === 0) {
-          return;
+      if (fromDb) {
+        setTaskBroadcasts(
+          Array.isArray(fromDb.taskBroadcasts)
+            ? fromDb.taskBroadcasts
+                .map(normalizeBroadcast)
+                .filter((item): item is TaskBroadcast => item !== null)
+            : [],
+        );
+        setThreads(fromDb.threads ? sanitizeThreads(fromDb.threads) : defaultThreads);
+      } else {
+        try {
+          const rawMessages = window.localStorage.getItem(TASK_MESSAGES_KEY);
+          setTaskBroadcasts(
+            rawMessages
+              ? (JSON.parse(rawMessages) as Array<Partial<TaskBroadcast> & { taskId?: StaffTaskId }>)
+                  .map(normalizeBroadcast)
+                  .filter((item): item is TaskBroadcast => item !== null)
+              : [],
+          );
+        } catch {
+          setTaskBroadcasts([]);
         }
 
-        setActivityEvents((current) => mergeActivityEvents(current, remote));
-      })
-      .catch(() => {
-        // Keep locally stored activity if the database table is not ready yet.
-      });
+        try {
+          const rawThreads = window.localStorage.getItem(THREADS_KEY);
+          setThreads(rawThreads ? sanitizeThreads(JSON.parse(rawThreads)) : defaultThreads);
+        } catch {
+          setThreads(defaultThreads);
+        }
+      }
+
+      setReady(true);
+
+      void loadActivityEvents()
+        .then((remote) => {
+          if (remote.length === 0) {
+            return;
+          }
+
+          setActivityEvents((current) => mergeActivityEvents(current, remote));
+        })
+        .catch(() => {
+          // Keep locally stored activity if the database table is not ready yet.
+        });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -195,6 +224,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(TASK_MESSAGES_KEY, JSON.stringify(taskBroadcasts));
     window.localStorage.setItem(THREADS_KEY, JSON.stringify(threads));
     window.localStorage.setItem(ACTIVITY_KEY, JSON.stringify(activityEvents));
+
+    const timer = window.setTimeout(() => {
+      void saveAppData(appDataKeys.notifications, { taskBroadcasts, threads });
+    }, 500);
+
+    return () => window.clearTimeout(timer);
   }, [activityEvents, readIds, ready, seenReplyIds, taskBroadcasts, threads]);
 
   const markRead = useCallback((id: string) => {

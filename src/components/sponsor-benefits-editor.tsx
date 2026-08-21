@@ -38,7 +38,7 @@ export function SponsorBenefitsEditor({
       ? "Voeg drankbonnen toe. Zet ‘op factuur’ aan als ze mee gefactureerd moeten worden."
       : "Voeg vrijkaarten toe. Zet ‘op factuur’ aan als ze mee gefactureerd moeten worden.";
 
-  function onAdd(event: FormEvent<HTMLFormElement>) {
+  async function onAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const qty = Number(quantity);
     const price = parseEuroAmount(unitPrice, { allowEmpty: true });
@@ -51,13 +51,17 @@ export function SponsorBenefitsEditor({
       return;
     }
 
-    addBenefit(type, {
+    const result = await addBenefit(type, {
       sponsorId,
       recipientName: recipientName.trim() || sponsor?.name || "Ontvanger",
       quantity: Math.round(qty),
       unitPrice: price,
       onInvoice,
     });
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
     setError(null);
     setQuantity("10");
   }
@@ -72,7 +76,7 @@ export function SponsorBenefitsEditor({
       )}
 
       <form
-        onSubmit={onAdd}
+        onSubmit={(event) => void onAdd(event)}
         className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.4fr_0.6fr_0.7fr_auto] ${compact ? "" : "mt-5"}`}
       >
         <input
@@ -120,8 +124,8 @@ export function SponsorBenefitsEditor({
               key={item.id}
               item={item}
               type={type}
-              onToggleInvoice={(checked) => updateBenefit(type, item.id, { onInvoice: checked })}
-              onRemove={() => removeBenefit(type, item.id)}
+              onToggleInvoice={(checked) => void updateBenefit(type, item.id, { onInvoice: checked })}
+              onRemove={() => void removeBenefit(type, item.id)}
             />
           ))}
         </ul>

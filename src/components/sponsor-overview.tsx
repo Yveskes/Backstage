@@ -2,6 +2,7 @@
 
 import { SponsorBenefitsEditor } from "@/components/sponsor-benefits-editor";
 import { TrashIcon } from "@/components/icons";
+import { SaveBar } from "@/components/save-bar";
 import { useSponsors } from "@/components/sponsors-provider";
 import {
   buildInvoiceDraft,
@@ -13,6 +14,7 @@ import {
   sponsorStatuses,
   type Sponsor,
   type SponsorBenefit,
+  type SponsorBilling,
   type SponsorInvoice,
   type SponsorPackageId,
   type SponsorStatus,
@@ -77,29 +79,64 @@ export function SponsorOverview({ sponsorId }: { sponsorId: string }) {
 }
 
 function PackageSection({ sponsor }: { sponsor: Sponsor }) {
-  const { updateSponsor } = useSponsors();
-  const [amount, setAmount] = useState(String(sponsor.amount));
+  const { saveSponsor } = useSponsors();
+  const [packageId, setPackageId] = useState<SponsorPackageId>(sponsor.packageId);
+  const [status, setStatus] = useState<SponsorStatus>(sponsor.status);
+  const [amount, setAmount] = useState(String(sponsor.amount).replace(".", ","));
   const [customLabel, setCustomLabel] = useState(sponsor.packageId === "anders" ? sponsor.packageLabel : "");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setPackageId(sponsor.packageId);
+    setStatus(sponsor.status);
     setAmount(String(sponsor.amount).replace(".", ","));
     setCustomLabel(sponsor.packageId === "anders" ? sponsor.packageLabel : "");
-  }, [sponsor.amount, sponsor.id, sponsor.packageId, sponsor.packageLabel]);
+    setMessage(null);
+    setError(null);
+  }, [sponsor.amount, sponsor.id, sponsor.packageId, sponsor.packageLabel, sponsor.status]);
 
-  function onPackageChange(packageId: SponsorPackageId) {
-    const option = sponsorPackageOptions.find((entry) => entry.id === packageId);
-    updateSponsor(sponsor.id, {
-      packageId,
-      packageLabel: packageId === "anders" ? customLabel.trim() || "Anders" : (option?.label ?? "Anders"),
-    });
-  }
+  const option = sponsorPackageOptions.find((entry) => entry.id === packageId);
+  const packageLabel =
+    packageId === "anders" ? customLabel.trim() || "Anders" : (option?.label ?? sponsor.packageLabel);
+  const parsedAmount = parseEuroAmount(amount);
+  const dirty =
+    packageId !== sponsor.packageId ||
+    status !== sponsor.status ||
+    packageLabel !== sponsor.packageLabel ||
+    (parsedAmount !== null && parsedAmount !== sponsor.amount) ||
+    amount.trim() !== String(sponsor.amount).replace(".", ",");
 
-  function commitAmount() {
-    const parsed = parseEuroAmount(amount);
-    if (parsed === null) {
+  async function onSave() {
+    if (parsedAmount === null) {
+      setError("Vul een geldig bedrag in.");
       return;
     }
-    updateSponsor(sponsor.id, { amount: parsed });
+
+    setSaving(true);
+    setError(null);
+    const result = await saveSponsor(sponsor.id, {
+      packageId,
+      packageLabel,
+      amount: parsedAmount,
+      status,
+    });
+    setSaving(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    setMessage("Opgeslagen.");
+  }
+
+  function onReset() {
+    setPackageId(sponsor.packageId);
+    setStatus(sponsor.status);
+    setAmount(String(sponsor.amount).replace(".", ","));
+    setCustomLabel(sponsor.packageId === "anders" ? sponsor.packageLabel : "");
+    setMessage(null);
+    setError(null);
   }
 
   return (
@@ -108,13 +145,16 @@ function PackageSection({ sponsor }: { sponsor: Sponsor }) {
         <label className="block text-sm">
           <span className="font-medium text-zinc-700">Type</span>
           <select
-            value={sponsor.packageId}
-            onChange={(event) => onPackageChange(event.target.value as SponsorPackageId)}
+            value={packageId}
+            onChange={(event) => {
+              setPackageId(event.target.value as SponsorPackageId);
+              setMessage(null);
+            }}
             className={fieldClass}
           >
-            {sponsorPackageOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
+            {sponsorPackageOptions.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.label}
               </option>
             ))}
           </select>
@@ -123,8 +163,10 @@ function PackageSection({ sponsor }: { sponsor: Sponsor }) {
           <span className="font-medium text-zinc-700">Bedrag sponsoring</span>
           <input
             value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            onBlur={commitAmount}
+            onChange={(event) => {
+              setAmount(event.target.value);
+              setMessage(null);
+            }}
             inputMode="decimal"
             className={fieldClass}
           />
@@ -132,42 +174,106 @@ function PackageSection({ sponsor }: { sponsor: Sponsor }) {
         <label className="block text-sm">
           <span className="font-medium text-zinc-700">Status</span>
           <select
-            value={sponsor.status}
-            onChange={(event) => updateSponsor(sponsor.id, { status: event.target.value as SponsorStatus })}
+            value={status}
+            onChange={(event) => {
+              setStatus(event.target.value as SponsorStatus);
+              setMessage(null);
+            }}
             className={fieldClass}
           >
-            {sponsorStatuses.map((status) => (
-              <option key={status} value={status}>
-                {sponsorStatusLabel[status]}
+            {sponsorStatuses.map((entry) => (
+              <option key={entry} value={entry}>
+                {sponsorStatusLabel[entry]}
               </option>
             ))}
           </select>
         </label>
-        {sponsor.packageId === "anders" ? (
+        {packageId === "anders" ? (
           <label className="block text-sm sm:col-span-3">
             <span className="font-medium text-zinc-700">Omschrijving type</span>
             <input
               value={customLabel}
-              onChange={(event) => setCustomLabel(event.target.value)}
-              onBlur={() =>
-                updateSponsor(sponsor.id, {
-                  packageId: "anders",
-                  packageLabel: customLabel.trim() || "Anders",
-                })
-              }
+              onChange={(event) => {
+                setCustomLabel(event.target.value);
+                setMessage(null);
+              }}
               placeholder="bv. Naturel, Media, In natura"
               className={fieldClass}
             />
           </label>
         ) : null}
       </div>
+      <SaveBar
+        dirty={dirty}
+        saving={saving}
+        message={message}
+        error={error}
+        alwaysShow
+        onSave={() => void onSave()}
+        onReset={onReset}
+      />
     </Section>
   );
 }
 
 function BillingSection({ sponsor }: { sponsor: Sponsor }) {
-  const { updateBilling, updateSponsor } = useSponsors();
-  const billing = sponsor.billing;
+  const { saveSponsor } = useSponsors();
+  const [draft, setDraft] = useState({
+    billing: sponsor.billing,
+    contactName: sponsor.contactName,
+    contactEmail: sponsor.contactEmail,
+  });
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraft({
+      billing: sponsor.billing,
+      contactName: sponsor.contactName,
+      contactEmail: sponsor.contactEmail,
+    });
+    setMessage(null);
+    setError(null);
+  }, [sponsor.billing, sponsor.contactEmail, sponsor.contactName, sponsor.id]);
+
+  const dirty =
+    JSON.stringify(draft.billing) !== JSON.stringify(sponsor.billing) ||
+    draft.contactName !== sponsor.contactName ||
+    draft.contactEmail !== sponsor.contactEmail;
+
+  function patchBilling(patch: Partial<SponsorBilling>) {
+    setDraft((current) => ({ ...current, billing: { ...current.billing, ...patch } }));
+    setMessage(null);
+  }
+
+  async function onSave() {
+    setSaving(true);
+    setError(null);
+    const result = await saveSponsor(sponsor.id, {
+      billing: draft.billing,
+      contactName: draft.contactName.trim(),
+      contactEmail: draft.contactEmail.trim().toLowerCase(),
+    });
+    setSaving(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    setMessage("Opgeslagen.");
+  }
+
+  function onReset() {
+    setDraft({
+      billing: sponsor.billing,
+      contactName: sponsor.contactName,
+      contactEmail: sponsor.contactEmail,
+    });
+    setMessage(null);
+    setError(null);
+  }
+
+  const billing = draft.billing;
 
   return (
     <Section
@@ -179,7 +285,7 @@ function BillingSection({ sponsor }: { sponsor: Sponsor }) {
           <span className="font-medium text-zinc-700">Bedrijfsnaam</span>
           <input
             value={billing.companyName}
-            onChange={(event) => updateBilling(sponsor.id, { companyName: event.target.value })}
+            onChange={(event) => patchBilling({ companyName: event.target.value })}
             className={fieldClass}
           />
         </label>
@@ -187,7 +293,7 @@ function BillingSection({ sponsor }: { sponsor: Sponsor }) {
           <span className="font-medium text-zinc-700">BTW-nummer</span>
           <input
             value={billing.vatNumber}
-            onChange={(event) => updateBilling(sponsor.id, { vatNumber: event.target.value })}
+            onChange={(event) => patchBilling({ vatNumber: event.target.value })}
             placeholder="BE 0xxx.xxx.xxx"
             className={fieldClass}
           />
@@ -196,7 +302,7 @@ function BillingSection({ sponsor }: { sponsor: Sponsor }) {
           <span className="font-medium text-zinc-700">Contactpersoon factuur</span>
           <input
             value={billing.invoiceContactName}
-            onChange={(event) => updateBilling(sponsor.id, { invoiceContactName: event.target.value })}
+            onChange={(event) => patchBilling({ invoiceContactName: event.target.value })}
             className={fieldClass}
           />
         </label>
@@ -204,7 +310,7 @@ function BillingSection({ sponsor }: { sponsor: Sponsor }) {
           <span className="font-medium text-zinc-700">Straat en nummer</span>
           <input
             value={billing.street}
-            onChange={(event) => updateBilling(sponsor.id, { street: event.target.value })}
+            onChange={(event) => patchBilling({ street: event.target.value })}
             className={fieldClass}
           />
         </label>
@@ -212,7 +318,7 @@ function BillingSection({ sponsor }: { sponsor: Sponsor }) {
           <span className="font-medium text-zinc-700">Postcode</span>
           <input
             value={billing.postalCode}
-            onChange={(event) => updateBilling(sponsor.id, { postalCode: event.target.value })}
+            onChange={(event) => patchBilling({ postalCode: event.target.value })}
             className={fieldClass}
           />
         </label>
@@ -220,7 +326,7 @@ function BillingSection({ sponsor }: { sponsor: Sponsor }) {
           <span className="font-medium text-zinc-700">Gemeente</span>
           <input
             value={billing.city}
-            onChange={(event) => updateBilling(sponsor.id, { city: event.target.value })}
+            onChange={(event) => patchBilling({ city: event.target.value })}
             className={fieldClass}
           />
         </label>
@@ -229,15 +335,18 @@ function BillingSection({ sponsor }: { sponsor: Sponsor }) {
           <input
             type="email"
             value={billing.invoiceEmail}
-            onChange={(event) => updateBilling(sponsor.id, { invoiceEmail: event.target.value })}
+            onChange={(event) => patchBilling({ invoiceEmail: event.target.value })}
             className={fieldClass}
           />
         </label>
         <label className="block text-sm">
           <span className="font-medium text-zinc-700">Algemene contactpersoon</span>
           <input
-            value={sponsor.contactName}
-            onChange={(event) => updateSponsor(sponsor.id, { contactName: event.target.value })}
+            value={draft.contactName}
+            onChange={(event) => {
+              setDraft((current) => ({ ...current, contactName: event.target.value }));
+              setMessage(null);
+            }}
             className={fieldClass}
           />
         </label>
@@ -245,12 +354,24 @@ function BillingSection({ sponsor }: { sponsor: Sponsor }) {
           <span className="font-medium text-zinc-700">Algemene e-mail</span>
           <input
             type="email"
-            value={sponsor.contactEmail}
-            onChange={(event) => updateSponsor(sponsor.id, { contactEmail: event.target.value })}
+            value={draft.contactEmail}
+            onChange={(event) => {
+              setDraft((current) => ({ ...current, contactEmail: event.target.value }));
+              setMessage(null);
+            }}
             className={fieldClass}
           />
         </label>
       </div>
+      <SaveBar
+        dirty={dirty}
+        saving={saving}
+        message={message}
+        error={error}
+        alwaysShow
+        onSave={() => void onSave()}
+        onReset={onReset}
+      />
     </Section>
   );
 }
@@ -260,8 +381,9 @@ function ExtraLinesSection({ sponsor }: { sponsor: Sponsor }) {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  function onAdd(event: FormEvent<HTMLFormElement>) {
+  async function onAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const parsed = parseEuroAmount(amount, { allowEmpty: true });
     if (!description.trim()) {
@@ -273,7 +395,13 @@ function ExtraLinesSection({ sponsor }: { sponsor: Sponsor }) {
       return;
     }
 
-    addExtraLine(sponsor.id, { description: description.trim(), amount: parsed });
+    setBusy(true);
+    const result = await addExtraLine(sponsor.id, { description: description.trim(), amount: parsed });
+    setBusy(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
     setDescription("");
     setAmount("");
     setError(null);
@@ -284,7 +412,7 @@ function ExtraLinesSection({ sponsor }: { sponsor: Sponsor }) {
       title="Extra factuurlijnen"
       description="Eigen omschrijving, met of zonder bedrag. Deze lijnen komen mee op de gegenereerde factuur."
     >
-      <form onSubmit={onAdd} className="grid gap-3 sm:grid-cols-[1.6fr_0.7fr_auto]">
+      <form onSubmit={(event) => void onAdd(event)} className="grid gap-3 sm:grid-cols-[1.6fr_0.7fr_auto]">
         <input
           value={description}
           onChange={(event) => setDescription(event.target.value)}
@@ -298,8 +426,12 @@ function ExtraLinesSection({ sponsor }: { sponsor: Sponsor }) {
           placeholder="Bedrag (€, optioneel)"
           className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-400"
         />
-        <button type="submit" className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
-          Lijn toevoegen
+        <button
+          type="submit"
+          disabled={busy}
+          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+        >
+          {busy ? "Opslaan..." : "Lijn toevoegen"}
         </button>
       </form>
       {error ? <p className="mt-3 text-sm text-red-800">{error}</p> : null}
@@ -318,7 +450,7 @@ function ExtraLinesSection({ sponsor }: { sponsor: Sponsor }) {
               </div>
               <button
                 type="button"
-                onClick={() => removeExtraLine(sponsor.id, line.id)}
+                onClick={() => void removeExtraLine(sponsor.id, line.id)}
                 className="rounded p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-700"
                 aria-label="Lijn verwijderen"
               >
@@ -346,10 +478,13 @@ function InvoiceSection({
   const { generateInvoice } = useSponsors();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const draft = buildInvoiceDraft(sponsor, drinks, tickets);
 
-  function onGenerate() {
-    const result = generateInvoice(sponsor.id);
+  async function onGenerate() {
+    setBusy(true);
+    const result = await generateInvoice(sponsor.id);
+    setBusy(false);
     if ("error" in result) {
       setError(result.error);
       return;
@@ -397,10 +532,11 @@ function InvoiceSection({
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={onGenerate}
-          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
+          onClick={() => void onGenerate()}
+          disabled={busy}
+          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
         >
-          Genereer factuur
+          {busy ? "Genereren..." : "Genereer factuur"}
         </button>
         {mailHref ? (
           <a

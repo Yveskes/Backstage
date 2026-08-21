@@ -1,5 +1,6 @@
 "use client";
 
+import { appDataKeys, loadAppData, saveAppData } from "@/app/(app)/data/actions";
 import { deleteMediaFile, saveMediaFile } from "@/lib/media-store";
 import {
   defaultSocialIdeas,
@@ -22,6 +23,11 @@ import {
 
 const POSTS_KEY = "backstage.social.posts";
 const IDEAS_KEY = "backstage.social.ideas";
+
+type SocialBundle = {
+  posts: SocialPost[];
+  ideas: SocialIdea[];
+};
 
 type SocialContextValue = {
   posts: SocialPost[];
@@ -60,9 +66,32 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setPosts(readList(POSTS_KEY, defaultSocialPosts));
-    setIdeas(readList(IDEAS_KEY, defaultSocialIdeas));
-    setReady(true);
+    let cancelled = false;
+
+    void (async () => {
+      const fromDb = await loadAppData<SocialBundle>(appDataKeys.social);
+      if (cancelled) {
+        return;
+      }
+
+      if (fromDb && Array.isArray(fromDb.posts) && Array.isArray(fromDb.ideas)) {
+        setPosts(fromDb.posts);
+        setIdeas(fromDb.ideas);
+        setReady(true);
+        return;
+      }
+
+      const localPosts = readList(POSTS_KEY, defaultSocialPosts);
+      const localIdeas = readList(IDEAS_KEY, defaultSocialIdeas);
+      setPosts(localPosts);
+      setIdeas(localIdeas);
+      setReady(true);
+      void saveAppData(appDataKeys.social, { posts: localPosts, ideas: localIdeas });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -72,6 +101,12 @@ export function SocialProvider({ children }: { children: ReactNode }) {
 
     window.localStorage.setItem(POSTS_KEY, JSON.stringify(posts));
     window.localStorage.setItem(IDEAS_KEY, JSON.stringify(ideas));
+
+    const timer = window.setTimeout(() => {
+      void saveAppData(appDataKeys.social, { posts, ideas });
+    }, 500);
+
+    return () => window.clearTimeout(timer);
   }, [ideas, posts, ready]);
 
   const saveUpload = useCallback(async (file: File) => {
