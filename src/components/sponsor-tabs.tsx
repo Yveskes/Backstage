@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { pillClass } from "@/lib/pills";
 
 const tabs = [
   { href: "", label: "Overzicht" },
@@ -28,11 +29,7 @@ export function SponsorTabs({ sponsorId }: { sponsorId: string }) {
           <Link
             key={tab.label}
             href={href}
-            className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
-              active
-                ? "bg-zinc-900 text-white"
-                : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
-            }`}
+            className={pillClass(active)}
           >
             {tab.label}
           </Link>

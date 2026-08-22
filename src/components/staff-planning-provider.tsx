@@ -19,8 +19,10 @@ import {
   removeTaskFromPlanning,
   sanitizePlanning,
   setNeededCount,
+  toggleAssignedHalf,
   toggleBuildHalf,
   toggleResponsible,
+  setBuildHalves,
   type StaffPlanning,
 } from "@/lib/staff-planning";
 import {
@@ -54,6 +56,8 @@ type StaffPlanningContextValue = {
   toggleLead: (taskId: StaffTaskId, userId: string) => ToggleResult;
   clearLeadIf: (taskId: StaffTaskId, userId: string) => void;
   toggleHalf: (kind: BuildTaskId, day: string, userId: string, half: HalfDayId) => void;
+  toggleAssignedHalfDay: (kind: BuildTaskId, day: string, userId: string, half: HalfDayId) => void;
+  setHalves: (kind: BuildTaskId, day: string, userId: string, halves: HalfDayId[]) => void;
   clearAttendance: (userId: string, kind?: BuildTaskId, day?: string) => void;
   addPost: (input: { label: string; days: StaffDayId }) => FestivalPost | { error: string };
   updatePost: (id: string, patch: { label: string; days: StaffDayId }) => { error?: string };
@@ -155,6 +159,20 @@ export function StaffPlanningProvider({ children }: { children: ReactNode }) {
     setPlanning((current) => toggleBuildHalf(current, kind, day, userId, half));
   }, []);
 
+  const toggleAssignedHalfDay = useCallback(
+    (kind: BuildTaskId, day: string, userId: string, half: HalfDayId) => {
+      setPlanning((current) => toggleAssignedHalf(current, kind, day, userId, half));
+    },
+    [],
+  );
+
+  const setHalves = useCallback(
+    (kind: BuildTaskId, day: string, userId: string, halves: HalfDayId[]) => {
+      setPlanning((current) => setBuildHalves(current, kind, day, userId, halves));
+    },
+    [],
+  );
+
   const clearAttendance = useCallback((userId: string, kind?: BuildTaskId, day?: string) => {
     setPlanning((current) => clearBuildAttendance(current, userId, kind, day));
   }, []);
@@ -208,6 +226,8 @@ export function StaffPlanningProvider({ children }: { children: ReactNode }) {
       toggleLead,
       clearLeadIf,
       toggleHalf,
+      toggleAssignedHalfDay,
+      setHalves,
       clearAttendance,
       addPost,
       updatePost,
@@ -223,7 +243,9 @@ export function StaffPlanningProvider({ children }: { children: ReactNode }) {
       planning,
       posts,
       ready,
+      setHalves,
       setNeed,
+      toggleAssignedHalfDay,
       toggleHalf,
       toggleLead,
       updatePost,

@@ -6,6 +6,7 @@ import { FestivalPlanning, NewPostForm } from "@/components/festival-planning";
 import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
 import { canManageStaff } from "@/lib/permissions";
+import { pillClass } from "@/lib/pills";
 
 export function StaffPlanningBoard() {
   const [tab, setTab] = useState<"build" | "festival">("festival");
@@ -20,18 +21,14 @@ export function StaffPlanningBoard() {
           <button
             type="button"
             onClick={() => setTab("festival")}
-            className={`rounded px-3 py-1.5 text-sm ${
-              tab === "festival" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:text-zinc-900"
-            }`}
+            className={pillClass(tab === "festival")}
           >
             Festival
           </button>
           <button
             type="button"
             onClick={() => setTab("build")}
-            className={`rounded px-3 py-1.5 text-sm ${
-              tab === "build" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:text-zinc-900"
-            }`}
+            className={pillClass(tab === "build")}
           >
             Opbouw / afbouw
           </button>

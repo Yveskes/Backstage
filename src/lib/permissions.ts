@@ -79,7 +79,7 @@ export type AppUser = {
 
 export const kindLabel: Record<UserKind, string> = {
   admin: "Admin",
-  team: "Team Zeverrock",
+  team: "Bestuur",
   staff: "Medewerker",
 };
 

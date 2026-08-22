@@ -172,7 +172,7 @@ export function AppSidebar() {
                   .filter((user) => user.id !== sessionUser.id)
                   .map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.fullName} ({user.kind === "staff" ? "medewerker" : "team"})
+                      {user.fullName} ({user.kind === "staff" ? "medewerker" : user.kind === "admin" ? "admin" : "bestuur"})
                     </option>
                   ))}
               </select>

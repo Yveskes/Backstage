@@ -242,19 +242,30 @@ function mergeDirectory(users: AppUser[], people: DirectoryPerson[]): AppUser[] 
     const email = person.email.toLowerCase();
     seen.add(email);
     const existing = localByEmail.get(email);
+    const seed = defaultUsers.find(
+      (entry) => entry.kind === "staff" && entry.email.toLowerCase() === email,
+    );
+    const hasSchedule = Boolean(
+      existing?.tasks.length ||
+        existing?.opbouwDays.length ||
+        existing?.afbouwDays.length ||
+        existing?.festivalByDay?.friday ||
+        existing?.festivalByDay?.saturday,
+    );
     const firstName = pickName(person.firstName, existing?.firstName, email);
     const lastName = pickName(person.lastName, existing?.lastName, email);
 
     merged.push(
       normalizeUser({
         ...(existing ?? {}),
+        ...(hasSchedule ? {} : seed),
         id: person.id,
         firstName,
         lastName,
         fullName: joinName(firstName, lastName) || pickName(person.fullName, existing?.fullName, email),
         email,
         kind: person.kind,
-        modules: person.modules.length > 0 ? person.modules : existing?.modules,
+        modules: person.modules.length > 0 ? person.modules : existing?.modules ?? seed?.modules,
         invitePending: person.invitePending,
         active: existing?.active ?? true,
       }),

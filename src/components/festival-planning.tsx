@@ -5,6 +5,7 @@ import { useRef, useState, type DragEvent, type FormEvent } from "react";
 import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
 import { canManageStaff, type AppUser } from "@/lib/permissions";
+import { pillClass } from "@/lib/pills";
 import { formatFill, isPostComplete, isPostUnderfilled } from "@/lib/staff-planning";
 import {
   assignFestivalPostDay,
@@ -461,9 +462,7 @@ function DayChoice({
           key={option.id}
           type="button"
           onClick={() => onChange(option.id)}
-          className={`rounded-full px-2.5 py-1 text-xs ${
-            value === option.id ? "bg-zinc-900 text-white" : "border border-zinc-200 bg-white text-zinc-700"
-          }`}
+          className={pillClass(value === option.id)}
         >
           {option.label}
         </button>

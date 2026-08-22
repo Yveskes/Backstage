@@ -9,6 +9,7 @@ import {
   tshirtSizes,
   type TshirtSize,
 } from "@/lib/tshirts";
+import { pillClass } from "@/lib/pills";
 import { useEffect, useState } from "react";
 
 function SizeButtons({
@@ -27,11 +28,7 @@ function SizeButtons({
           key={option}
           type="button"
           onClick={() => onSelect(option)}
-          className={`rounded px-3 py-1.5 text-sm ${
-            selected === option
-              ? "bg-zinc-900 text-white"
-              : "border border-red-200 bg-white text-zinc-700"
-          }`}
+          className={pillClass(selected === option)}
         >
           {option}
           {option === lastYear ? <span className="ml-1 text-[11px] opacity-70">vorig jaar</span> : null}

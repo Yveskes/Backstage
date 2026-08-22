@@ -1,7 +1,7 @@
 "use client";
 
 import { useStaffPlanning } from "@/components/staff-planning-provider";
-import { COMBI_DAYS, rewardForUser } from "@/lib/build-rewards";
+import { COMBI_HALF_DAYS, rewardForUser } from "@/lib/build-rewards";
 import type { AppUser } from "@/lib/permissions";
 
 function helpsWithBuild(user: AppUser) {
@@ -31,18 +31,22 @@ export function BuildRewardPills({
     <div className={`flex flex-wrap items-center gap-2 ${className}`}>
       <p className="text-sm font-semibold text-zinc-900">Te ontvangen</p>
       <p
-        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-          reward.tokens > 0 ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"
+        className={`rounded-[4px] border px-2 py-0.5 text-xs font-medium ${
+          reward.tokens > 0
+            ? "border-emerald-400 bg-emerald-200 text-emerald-950"
+            : "border-red-300 bg-red-50 text-red-800"
         }`}
       >
         {reward.tokens} drankjeton{reward.tokens === 1 ? "" : "s"}
       </p>
       <p
-        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-          reward.combiTicket ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"
+        className={`rounded-[4px] border px-2 py-0.5 text-xs font-medium ${
+          reward.combiTicket
+            ? "border-emerald-400 bg-emerald-200 text-emerald-950"
+            : "border-red-300 bg-red-50 text-red-800"
         }`}
       >
-        {reward.combiTicket ? "Combiticket" : `Nog geen combi (${reward.days}/${COMBI_DAYS})`}
+        {reward.combiTicket ? "Combiticket" : `Nog geen combi (${reward.halfDays}/${COMBI_HALF_DAYS})`}
       </p>
     </div>
   );

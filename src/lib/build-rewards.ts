@@ -2,7 +2,7 @@ import type { AppUser } from "@/lib/permissions";
 import { halvesFor, type StaffPlanning } from "@/lib/staff-planning";
 import { availableHalves, constrainHalves, type HalfDayId } from "@/lib/staff-tasks";
 
-export const COMBI_DAYS = 5;
+export const COMBI_HALF_DAYS = 10;
 export const TOKENS_PER_HALF = 3;
 
 export type BuildReward = {
@@ -10,20 +10,17 @@ export type BuildReward = {
   fullName: string;
   email: string;
   halfDays: number;
-  days: number;
   tokens: number;
   combiTicket: boolean;
 };
 
 export function rewardFromHalves(entries: HalfDayId[][]) {
   const halfDays = entries.reduce((sum, halves) => sum + halves.length, 0);
-  const days = entries.filter((halves) => halves.length === 2).length;
 
   return {
     halfDays,
-    days,
     tokens: halfDays * TOKENS_PER_HALF,
-    combiTicket: days >= COMBI_DAYS,
+    combiTicket: halfDays >= COMBI_HALF_DAYS,
   };
 }
 
@@ -73,9 +70,9 @@ export function rewardsForUsers(users: AppUser[], planning: StaffPlanning): Buil
 }
 
 export function buildRewardsCsv(rows: BuildReward[]) {
-  const header = "Naam,E-mail,Halve dagen,Volledige dagen,Drankjetons,Combiticket";
+  const header = "Naam,E-mail,Halve dagen,Drankjetons,Combiticket";
   const lines = rows.map((row) =>
-    [row.fullName, row.email, row.halfDays, row.days, row.tokens, row.combiTicket ? "ja" : "nee"].join(","),
+    [row.fullName, row.email, row.halfDays, row.tokens, row.combiTicket ? "ja" : "nee"].join(","),
   );
 
   return `${header}\n${lines.join("\n")}\n`;

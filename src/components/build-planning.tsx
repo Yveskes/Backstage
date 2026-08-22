@@ -4,18 +4,18 @@ import { useRef, useState, type DragEvent } from "react";
 import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
 import {
-  COMBI_DAYS,
+  COMBI_HALF_DAYS,
   TOKENS_PER_HALF,
   buildRewardsCsv,
   downloadBuildRewardsCsv,
-  rewardForUser,
   rewardsForUsers,
 } from "@/lib/build-rewards";
-import { halvesFor } from "@/lib/staff-planning";
+import { assignedHalves, halvesFor } from "@/lib/staff-planning";
 import {
   afbouwDayOptions,
   halfDayOptions,
   availableHalves,
+  constrainHalves,
   opbouwDayOptions,
   type AfbouwDayId,
   type BuildTaskId,
@@ -23,6 +23,7 @@ import {
   type StaffTaskId,
 } from "@/lib/staff-tasks";
 import type { AppUser } from "@/lib/permissions";
+import { pillClass } from "@/lib/pills";
 
 type DragPayload = {
   userId: string;
@@ -70,7 +71,7 @@ function withoutTaskIfEmpty(tasks: StaffTaskId[], task: BuildTaskId, remainingDa
 
 export function BuildPlanning() {
   const { users, updateUser } = useUsers();
-  const { planning, toggleHalf, clearAttendance } = useStaffPlanning();
+  const { planning, toggleAssignedHalfDay, setHalves, clearAttendance } = useStaffPlanning();
   const [overKey, setOverKey] = useState<string | null>(null);
   const dragging = useRef(false);
   const rewards = rewardsForUsers(users, planning);
@@ -120,6 +121,11 @@ export function BuildPlanning() {
     }
 
     updateUser(user.id, { tasks, opbouwDays, afbouwDays });
+
+    const marked = constrainHalves(toKind, toDay, halvesFor(planning, toKind, toDay, user.id));
+    if (marked.length === 0) {
+      setHalves(toKind, toDay, user.id, availableHalves(toKind, toDay));
+    }
   }
 
   function onDropCell(event: DragEvent, toKind: BuildTaskId, toDay: string) {
@@ -142,8 +148,8 @@ export function BuildPlanning() {
   return (
     <div className="space-y-6">
       <p className="text-sm text-zinc-500">
-        Duid per persoon VM of NM aan. {COMBI_DAYS} volledige dagen (VM én NM) op- of afbouw = combiticket. Per
-        halve dag = {TOKENS_PER_HALF} drankjetons.
+        Duid per persoon VM en/of NM aan; minstens één moet aanstaan. {COMBI_HALF_DAYS} halve
+        dagen op- of afbouw = combiticket. Per halve dag = {TOKENS_PER_HALF} drankjetons.
       </p>
 
       {unassigned.length > 0 ? (
@@ -203,8 +209,7 @@ export function BuildPlanning() {
                     {people.length === 0 ? null : (
                       <ul className="space-y-1">
                         {people.map((user) => {
-                          const present = halvesFor(planning, column.kind, day.id, user.id);
-                          const reward = rewardForUser(planning, user);
+                          const present = assignedHalves(planning, column.kind, day.id, user.id);
 
                           return (
                             <li
@@ -246,7 +251,7 @@ export function BuildPlanning() {
                                       <span
                                         key={half.id}
                                         aria-hidden
-                                        className="invisible rounded px-1.5 py-0.5 text-[11px] font-medium"
+                                        className={`${pillClass(false)} invisible pointer-events-none`}
                                       >
                                         {half.label}
                                       </span>
@@ -260,27 +265,16 @@ export function BuildPlanning() {
                                       key={half.id}
                                       type="button"
                                       aria-pressed={on}
-                                      onClick={() => toggleHalf(column.kind, day.id, user.id, half.id)}
-                                      className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
-                                        on
-                                          ? "bg-zinc-900 text-white"
-                                          : "border border-zinc-200 bg-zinc-50 text-zinc-500"
-                                      }`}
+                                      onClick={() =>
+                                        toggleAssignedHalfDay(column.kind, day.id, user.id, half.id)
+                                      }
+                                      className={pillClass(on)}
                                     >
                                       {half.label}
                                     </button>
                                   );
                                 })}
                               </span>
-
-                              {reward.combiTicket ? (
-                                <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-800">
-                                  Combi
-                                </span>
-                              ) : null}
-                              {reward.tokens > 0 ? (
-                                <span className="text-[11px] text-zinc-500">{reward.tokens} jetons</span>
-                              ) : null}
                             </li>
                           );
                         })}
@@ -320,7 +314,6 @@ export function BuildPlanning() {
                 <tr>
                   <th className="px-4 py-3 font-medium">Naam</th>
                   <th className="px-4 py-3 font-medium">Halve dagen</th>
-                  <th className="px-4 py-3 font-medium">Volledige dagen</th>
                   <th className="px-4 py-3 font-medium">Drankjetons</th>
                   <th className="px-4 py-3 font-medium">Combiticket</th>
                 </tr>
@@ -330,7 +323,6 @@ export function BuildPlanning() {
                   <tr key={row.userId} className="border-b border-zinc-100 last:border-0">
                     <td className="px-4 py-3 font-medium text-zinc-900">{row.fullName}</td>
                     <td className="px-4 py-3 text-zinc-600">{row.halfDays}</td>
-                    <td className="px-4 py-3 text-zinc-600">{row.days}</td>
                     <td className="px-4 py-3 text-zinc-600">{row.tokens}</td>
                     <td className="px-4 py-3">
                       {row.combiTicket ? (

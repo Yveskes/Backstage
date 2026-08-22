@@ -5,6 +5,7 @@ import { useNotifications } from "@/components/notifications-provider";
 import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
 import { canManageStaff, firstNameOf } from "@/lib/permissions";
+import { pillClass } from "@/lib/pills";
 import {
   formatStaffTasks,
   staffTaskOptionsFor,
@@ -91,14 +92,10 @@ export default function TaskBroadcastPage() {
                   key={task.id}
                   type="button"
                   onClick={() => toggleTask(task.id)}
-                  className={`rounded-full px-3 py-1.5 text-sm ${
-                    selected
-                      ? "bg-zinc-900 text-white"
-                      : "border border-zinc-200 bg-white text-zinc-700"
-                  }`}
+                  className={pillClass(selected)}
                 >
                   {task.label}
-                  <span className={`ml-1 text-[11px] ${selected ? "text-zinc-300" : "text-zinc-400"}`}>
+                  <span className={`ml-1 text-[11px] ${selected ? "text-emerald-800" : "text-zinc-400"}`}>
                     {count}
                   </span>
                 </button>

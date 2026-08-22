@@ -7,6 +7,7 @@ import { useNotifications } from "@/components/notifications-provider";
 import { useStaffPlanning } from "@/components/staff-planning-provider";
 import { useUsers } from "@/components/users-provider";
 import { firstNameOf } from "@/lib/permissions";
+import { pillClass } from "@/lib/pills";
 import { assignmentBlocks } from "@/lib/staff-tasks";
 
 export function HomeFeed() {
@@ -36,7 +37,7 @@ export function HomeFeed() {
                     {task.days.map((day) => (
                       <span
                         key={day}
-                        className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs text-zinc-700"
+                        className={pillClass(false)}
                       >
                         {day}
                       </span>

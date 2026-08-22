@@ -3,6 +3,7 @@
 import { createInvite, type AuthState } from "@/app/auth/actions";
 import { useUsers } from "@/components/users-provider";
 import { canAssignRoles, canManageStaff, createNewUser, kindLabel, type UserKind } from "@/lib/permissions";
+import { pillClass } from "@/lib/pills";
 import { useActionState, useEffect, useRef, useState } from "react";
 
 type InviteDraft = { firstName: string; lastName: string; email: string; kind: UserKind };
@@ -91,7 +92,7 @@ export function AddStaffForm() {
       <fieldset className="mt-4">
         <legend className="text-sm font-medium text-zinc-800">Type</legend>
         <div className="mt-2 flex flex-wrap gap-2">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm text-zinc-800 has-[:checked]:border-zinc-900 has-[:checked]:bg-zinc-900 has-[:checked]:text-white">
+          <label className={`cursor-pointer ${pillClass(kind === "staff")}`}>
             <input
               type="radio"
               name="kind"
@@ -103,7 +104,7 @@ export function AddStaffForm() {
             {kindLabel.staff}
           </label>
           {canInviteTeam ? (
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm text-zinc-800 has-[:checked]:border-zinc-900 has-[:checked]:bg-zinc-900 has-[:checked]:text-white">
+            <label className={`cursor-pointer ${pillClass(kind === "team")}`}>
               <input
                 type="radio"
                 name="kind"
@@ -119,7 +120,7 @@ export function AddStaffForm() {
         <p className="mt-2 text-xs text-zinc-500">
           {invitingTeam
             ? "Alleen admin. Er gaat geen mail uit: jij kopieert de link en deelt die zelf (WhatsApp, mail, …)."
-            : "Medewerkers zien hun eigen pagina en meldingen. Team Zeverrock nodig? Dat kan alleen een admin via een link."}
+            : "Medewerkers zien hun eigen pagina en meldingen. Bestuur nodig? Dat kan alleen een admin via een link."}
         </p>
       </fieldset>
 

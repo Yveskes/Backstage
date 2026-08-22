@@ -122,7 +122,7 @@ export async function createInvite(
   }
 
   if (kind === "team" && !isAdminEmail(user.email ?? "")) {
-    return { error: "Alleen admin kan iemand als team uitnodigen." };
+    return { error: "Alleen admin kan iemand als bestuur uitnodigen." };
   }
 
   let token: string;
@@ -160,7 +160,7 @@ export async function createInvite(
 
     if (kind === "team") {
       return {
-        success: "Teamlink is klaar. Kopieer die en deel hem zelf. 7 dagen geldig.",
+        success: "Bestuurslink is klaar. Kopieer die en deel hem zelf. 7 dagen geldig.",
         inviteUrl,
         emailSent: false,
       };

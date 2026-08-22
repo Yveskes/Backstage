@@ -197,6 +197,36 @@ export function halvesFor(
   return sanitizeHalves(planning.attendance[attendanceKey(kind, day, userId)]);
 }
 
+export function assignedHalves(
+  planning: StaffPlanning,
+  kind: BuildTaskId,
+  day: string,
+  userId: string,
+): HalfDayId[] {
+  const marked = constrainHalves(kind, day, halvesFor(planning, kind, day, userId));
+  return marked.length > 0 ? marked : availableHalves(kind, day);
+}
+
+export function setBuildHalves(
+  planning: StaffPlanning,
+  kind: BuildTaskId,
+  day: string,
+  userId: string,
+  halves: HalfDayId[],
+): StaffPlanning {
+  const key = attendanceKey(kind, day, userId);
+  const next = constrainHalves(kind, day, sanitizeHalves(halves));
+  const attendance = { ...planning.attendance };
+
+  if (next.length === 0) {
+    delete attendance[key];
+  } else {
+    attendance[key] = next;
+  }
+
+  return { ...planning, attendance };
+}
+
 export function toggleBuildHalf(
   planning: StaffPlanning,
   kind: BuildTaskId,
@@ -204,21 +234,33 @@ export function toggleBuildHalf(
   userId: string,
   half: HalfDayId,
 ): StaffPlanning {
-  const key = attendanceKey(kind, day, userId);
   const current = constrainHalves(kind, day, halvesFor(planning, kind, day, userId));
   if (!availableHalves(kind, day).includes(half)) {
     return planning;
   }
   const next = current.includes(half) ? current.filter((entry) => entry !== half) : [...current, half];
-  const attendance = { ...planning.attendance };
+  return setBuildHalves(planning, kind, day, userId, next);
+}
 
-  if (next.length === 0) {
-    delete attendance[key];
-  } else {
-    attendance[key] = sanitizeHalves(next);
+export function toggleAssignedHalf(
+  planning: StaffPlanning,
+  kind: BuildTaskId,
+  day: string,
+  userId: string,
+  half: HalfDayId,
+): StaffPlanning {
+  const allowed = availableHalves(kind, day);
+  if (!allowed.includes(half)) {
+    return planning;
   }
 
-  return { ...planning, attendance };
+  const active = assignedHalves(planning, kind, day, userId);
+  const next = active.includes(half) ? active.filter((entry) => entry !== half) : [...active, half];
+  if (next.length === 0) {
+    return planning;
+  }
+
+  return setBuildHalves(planning, kind, day, userId, next);
 }
 
 export function clearBuildAttendance(

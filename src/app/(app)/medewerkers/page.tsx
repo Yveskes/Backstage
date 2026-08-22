@@ -13,6 +13,7 @@ import {
   type StaffTaskId,
 } from "@/lib/staff-tasks";
 import { formatTshirtSizes, hasConfirmedTshirt } from "@/lib/tshirts";
+import { pillClass } from "@/lib/pills";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -103,9 +104,7 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-sm ${
-        active ? "bg-zinc-900 text-white" : "border border-zinc-200 bg-white text-zinc-700"
-      }`}
+      className={pillClass(active)}
     >
       {children}
     </button>

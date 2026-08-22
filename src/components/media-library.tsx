@@ -16,27 +16,24 @@ import {
 } from "@/lib/media-library";
 import { loadMediaFile } from "@/lib/media-store";
 import { firstNameOf } from "@/lib/permissions";
+import { pillClass } from "@/lib/pills";
 import { useEffect, useMemo, useState } from "react";
 import { MediaUploadZone } from "@/components/media-upload-zone";
 
 function ViewToggle({ value, onChange }: { value: LibraryView; onChange: (view: LibraryView) => void }) {
   return (
-    <div className="flex rounded-lg border border-zinc-200 bg-white p-1">
+    <div className="flex flex-wrap gap-1">
       <button
         type="button"
         onClick={() => onChange("list")}
-        className={`rounded-md px-3 py-1.5 text-sm ${
-          value === "list" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-50"
-        }`}
+        className={pillClass(value === "list")}
       >
         Lijst
       </button>
       <button
         type="button"
         onClick={() => onChange("thumbs")}
-        className={`rounded-md px-3 py-1.5 text-sm ${
-          value === "thumbs" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-50"
-        }`}
+        className={pillClass(value === "thumbs")}
       >
         Miniaturen
       </button>

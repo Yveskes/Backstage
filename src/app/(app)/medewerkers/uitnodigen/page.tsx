@@ -30,7 +30,7 @@ export default function InviteStaffPage() {
 
       <PageHeader
         title="Medewerker uitnodigen"
-        description="Medewerkers krijgen een mail. Team Zeverrock nodig je zelf uit via een link (alleen admin)."
+        description="Medewerkers krijgen een mail. Bestuur nodig je zelf uit via een link (alleen admin)."
       />
 
       <AddStaffForm />
